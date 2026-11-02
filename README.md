@@ -92,9 +92,9 @@ Utiliser le bouton **Tester la connexion** après chaque ajout pour vérifier le
 
 Les liens de suivi et de désinscription sont construits à partir de `PUBLIC_BASE_URL`. En local (`http://localhost:4000`), ils ne sont pas atteignables par les destinataires réels : ils ne fonctionnent qu'une fois l'application déployée sur un nom de domaine public.
 
-En production, le proxy inverse doit transmettre au backend (port 4000) **`/api/`, `/t/` et `/socket.io/`** — sinon le pixel d'ouverture tombe sur la page 404 du frontend. Une configuration Nginx prête à l'emploi est fournie dans [`deploy/nginx-reverse-proxy.conf`](deploy/nginx-reverse-proxy.conf).
+Le pixel d'ouverture, la désinscription et les images des modèles sont servis sous `/api/` : en production, il suffit que le proxy (ex. Nginx Proxy Manager) transmette `/api/` et `/socket.io/` au backend (port 4000), le reste au frontend.
 
-Test rapide : `https://votre-domaine/t/o/test.png` doit renvoyer une image (vide), pas une page HTML.
+Test rapide : `https://votre-domaine/api/t/o/test.png` doit renvoyer une image (vide), pas une page HTML.
 
 ## Délivrabilité (DNS)
 

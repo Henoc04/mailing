@@ -18,9 +18,10 @@ app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "2mb" }));
 app.use(httpLogger);
 
-// Public tracking pixel/click routes, mounted at the root path (NOT under
-// /api, NOT behind requireAuth or apiRateLimiter) so open-pixel/click URLs
-// embedded in outgoing emails stay short: PUBLIC_BASE_URL + "/t/o/:token".
+// Public tracking pixel/click routes (no auth, no apiRateLimiter). New emails
+// use /api/t/... because the production reverse proxy only forwards /api/ to
+// the backend. /t/... stays mounted for links in emails already sent.
+app.use("/api/t", trackingRoutes);
 app.use("/t", trackingRoutes);
 
 app.get("/api/health", (_req, res) => {

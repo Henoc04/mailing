@@ -17,6 +17,9 @@ const TRANSPARENT_PIXEL_PNG = Buffer.from(
 function sendPixel(res: Response): void {
   res.set("Content-Type", "image/png");
   res.set("Cache-Control", "no-store");
+  // Helmet's default (same-origin) makes browsers refuse to display the
+  // pixel inside webmail pages (Outlook.com...), so the open is never seen.
+  res.set("Cross-Origin-Resource-Policy", "cross-origin");
   res.status(200).send(TRANSPARENT_PIXEL_PNG);
 }
 

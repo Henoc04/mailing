@@ -232,13 +232,13 @@ export function injectTracking(params: InjectTrackingParams): string {
     ? bodyHtml.replace(
         ANCHOR_HREF_PATTERN,
         (_match, beforeAttrs: string, quote: string, originalHref: string, afterAttrs: string) => {
-          const trackedHref = `${publicBaseUrl}/t/c/${trackingToken}?u=${encodeURIComponent(originalHref)}`;
+          const trackedHref = `${publicBaseUrl}/api/t/c/${trackingToken}?u=${encodeURIComponent(originalHref)}`;
           return `<a ${beforeAttrs}href=${quote}${trackedHref}${quote}${afterAttrs}>`;
         }
       )
     : bodyHtml;
 
-  const pixelTag = `<img src="${publicBaseUrl}/t/o/${trackingToken}.png" width="1" height="1" style="display:none" alt="" />`;
+  const pixelTag = `<img src="${publicBaseUrl}/api/t/o/${trackingToken}.png" width="1" height="1" style="display:none" alt="" />`;
 
   const bodyCloseIndex = withTrackedLinks.search(/<\/body\s*>/i);
   if (bodyCloseIndex === -1) {

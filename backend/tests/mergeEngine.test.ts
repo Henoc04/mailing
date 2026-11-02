@@ -62,7 +62,7 @@ describe("injectTracking", () => {
 
   it("adds the open-tracking pixel", () => {
     const out = injectTracking({ bodyHtml: "<p>Hi</p>", trackingToken: "TOK", publicBaseUrl: base });
-    expect(out).toContain(`<img src="${base}/t/o/TOK.png"`);
+    expect(out).toContain(`<img src="${base}/api/t/o/TOK.png"`);
   });
 
   it("leaves links untouched while click tracking is suspended", () => {
@@ -74,7 +74,7 @@ describe("injectTracking", () => {
 
   it("inserts the pixel before </body> when present", () => {
     const out = injectTracking({ bodyHtml: "<html><body><p>x</p></body></html>", trackingToken: "T", publicBaseUrl: base });
-    expect(out.indexOf("/t/o/T.png")).toBeLessThan(out.indexOf("</body>"));
+    expect(out.indexOf("/api/t/o/T.png")).toBeLessThan(out.indexOf("</body>"));
   });
 });
 
