@@ -58,7 +58,9 @@ export function getIO(): Server {
 
 export function emitCampaignProgress(campaignId: string, payload: object): void {
   try {
-    getIO().to(`campaign:${campaignId}`).emit("campaign:progress", payload);
+    // campaignId is always attached: the client discards payloads that
+    // don't identify their campaign.
+    getIO().to(`campaign:${campaignId}`).emit("campaign:progress", { ...payload, campaignId });
   } catch (err) {
     logger.warn({ err, campaignId }, "emitCampaignProgress: Socket.IO not initialized, skipping emit");
   }

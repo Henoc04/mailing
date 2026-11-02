@@ -9,6 +9,9 @@ import { Badge, type BadgeColor } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { useToast } from "../../components/ui/ToastProvider";
+import { RecipientsLog } from "../../components/campaigns/RecipientsLog";
+import { TagStatsTable } from "../../components/campaigns/TagStatsTable";
+import { CLICK_TRACKING_ENABLED } from "../../config/features";
 
 const STATUS_LABELS: Record<CampaignStatus, string> = {
   DRAFT: "Brouillon",
@@ -193,12 +196,18 @@ export default function CampaignProgressPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${CLICK_TRACKING_ENABLED ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
         <StatTile label="Envoyés" value={progress.sentCount} accent="text-green-600 dark:text-green-400" />
         <StatTile label="Échecs" value={progress.failedCount} accent="text-red-600 dark:text-red-400" />
         <StatTile label="Ouvertures" value={progress.openedCount} accent="text-brand-600 dark:text-brand-400" />
-        <StatTile label="Clics" value={progress.clickedCount} accent="text-purple-600 dark:text-purple-400" />
+        {CLICK_TRACKING_ENABLED && (
+          <StatTile label="Clics" value={progress.clickedCount} accent="text-purple-600 dark:text-purple-400" />
+        )}
       </div>
+
+      <TagStatsTable campaignId={campaignId} />
+
+      <RecipientsLog campaignId={campaignId} />
 
       <Modal isOpen={isCancelModalOpen} onClose={() => setIsCancelModalOpen(false)} title="Annuler la campagne">
         <p className="text-sm text-gray-700 dark:text-gray-300">

@@ -4,7 +4,13 @@ import * as sendingController from "../controllers/sending.controller";
 import { requireAuth } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validate.middleware";
 import { uploadAttachments } from "../middleware/upload.middleware";
-import { createCampaignSchema, previewRecipientsSchema, updateCampaignSchema } from "../dto/campaign.dto";
+import {
+  createCampaignSchema,
+  listRecipientsQuerySchema,
+  previewRecipientsSchema,
+  testSendSchema,
+  updateCampaignSchema,
+} from "../dto/campaign.dto";
 
 // All /campaigns/:id/(start|pause|resume|cancel|progress) sending-control
 // routes live in this file (backed by sending.controller.ts) rather than a
@@ -26,6 +32,9 @@ router.post("/:id/duplicate", campaignsController.duplicate);
 
 router.post("/:id/resolve", campaignsController.resolveRecipients);
 router.post("/:id/preview", campaignsController.preview);
+router.post("/:id/test-send", validate(testSendSchema), campaignsController.testSend);
+router.get("/:id/recipients", validate(listRecipientsQuerySchema, "query"), campaignsController.listRecipients);
+router.get("/:id/stats-by-tag", campaignsController.statsByTag);
 
 router.post("/:id/attachments", uploadAttachments, campaignsController.uploadAttachments);
 router.delete("/:id/attachments/:attachmentId", campaignsController.removeAttachment);

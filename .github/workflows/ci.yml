@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Backend — génération du client Prisma
+        run: npm run prisma:generate
+
+      - name: Backend — vérification des types
+        run: npx tsc -p backend/tsconfig.json --noEmit
+
+      - name: Backend — tests
+        run: npm test --workspace backend
+
+      - name: Frontend — vérification des types et build
+        run: npm run build --workspace frontend
+
+  # Déploiement automatique sur le serveur après un push sur main, une fois
+  # les vérifications passées. Inactif tant que les secrets DEPLOY_* ne sont
+  # pas configurés dans GitHub (Settings > Secrets and variables > Actions).
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier la configuration du déploiement
+        id: cfg
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then
+            echo "Secrets DEPLOY_* absents : déploiement ignoré."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Déployer via SSH
+        if: steps.cfg.outputs.enabled == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            cd "${{ secrets.DEPLOY_PATH }}"
+            ./scripts/deploy.sh

@@ -127,6 +127,10 @@ model Contact {
   siteWeb        String?
   notes          String?  @db.Text
   isUnsubscribed Boolean  @default(false)
+  unsubscribedAt DateTime?
+  // Set when an SMTP server permanently rejected the address (unknown
+  // mailbox/domain); such contacts are excluded from future campaigns.
+  bouncedAt      DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

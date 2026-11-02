@@ -115,6 +115,86 @@ export function preserveLineBreaksForEmail(html: string): string {
     .replace(/(<li[^>]*>\s*)<p style="margin:0 0 1em 0;/gi, '$1<p style="margin:0;');
 }
 
+export function buildUnsubscribeUrl(publicBaseUrl: string, trackingToken: string): string {
+  // Under /api so the production reverse proxy (which forwards /api to the
+  // backend) reaches it — unlike /t/*, which needs an extra proxy rule.
+  return `${publicBaseUrl}/api/unsubscribe/${trackingToken}`;
+}
+
+/**
+ * Appends the legally required unsubscribe footer (RGPD/LCEN). Must run
+ * AFTER `injectTracking`, so the unsubscribe link is never rewritten into a
+ * click-tracking redirect.
+ */
+export function appendUnsubscribeFooter(bodyHtml: string, unsubscribeUrl: string): string {
+  const footer =
+    `<p style="margin:32px 0 0 0;font-size:12px;color:#888888;text-align:center;">` +
+    `Vous ne souhaitez plus recevoir nos emails ? ` +
+    `<a href="${unsubscribeUrl}" style="color:#888888;">Se désinscrire</a></p>`;
+
+  const bodyCloseIndex = bodyHtml.search(/<\/body\s*>/i);
+  if (bodyCloseIndex === -1) {
+    return `${bodyHtml}${footer}`;
+  }
+  return `${bodyHtml.slice(0, bodyCloseIndex)}${footer}${bodyHtml.slice(bodyCloseIndex)}`;
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  eacute: "é",
+  egrave: "è",
+  ecirc: "ê",
+  agrave: "à",
+  acirc: "â",
+  ccedil: "ç",
+  ocirc: "ô",
+  ucirc: "û",
+  ugrave: "ù",
+  icirc: "î",
+  euro: "€",
+};
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_m, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_m, code: string) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&([a-z]+);/gi, (m, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? m);
+}
+
+/**
+ * Plain-text alternative sent alongside the HTML. HTML-only emails are a
+ * classic spam signal, and some recipients read mail in text-only clients.
+ * Links are kept readable as "text (url)".
+ */
+export function htmlToText(html: string): string {
+  const text = html
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "")
+    .replace(/<img[^>]*>/gi, "")
+    .replace(/<a\s[^>]*href=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi, (_m, _q, href: string, inner: string) => {
+      const label = inner.replace(/<[^>]+>/g, "").trim();
+      return label && label !== href ? `${label} (${href})` : href;
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "\n- ")
+    // No newline on </li>: each <li> already starts its own line.
+    .replace(/<\/(p|div|h[1-6]|tr|blockquote|ul|ol|table)>/gi, "\n")
+    .replace(/<(p|div|h[1-6]|tr|blockquote|ul|ol|table)(\s[^>]*)?>/gi, "\n")
+    .replace(/<\/t[dh]>/gi, "\t")
+    .replace(/<[^>]+>/g, "");
+
+  return decodeEntities(text)
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export interface InjectTrackingParams {
   bodyHtml: string;
   trackingToken: string;

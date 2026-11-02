@@ -263,25 +263,39 @@ export async function importRows(
   }
 
   const candidates: CreateContactInput[] = [];
+  // File line number of each candidate (header = line 1, first data row =
+  // line 2) so persistence errors point at the right line of the user's file.
+  const candidateLines: number[] = [];
+  const firstLineByEmail = new Map<string, number>();
   const groupValueByEmail = new Map<string, string>();
   const errors: Array<{ row: number; message: string }> = [];
 
   rows.forEach((row, index) => {
+    const line = index + 2;
     // `prenom` is optional — many organizational contacts (town halls,
     // generic company inboxes) have no individual first name, only `nom`
     // and `email` are required for a row to be importable.
     const prenom = getMappedValue(row, columnMapping, "prenom");
     const nom = getMappedValue(row, columnMapping, "nom");
-    const email = getMappedValue(row, columnMapping, "email");
+    // Lower-cased so "Contact@X.fr" and "contact@x.fr" are recognized as
+    // the same address (and stored consistently).
+    const email = getMappedValue(row, columnMapping, "email").trim().toLowerCase();
 
     if (!nom) {
-      errors.push({ row: index, message: "Le nom est manquant" });
+      errors.push({ row: line, message: "Le nom est manquant" });
       return;
     }
     if (!email || !EMAIL_REGEX.test(email)) {
-      errors.push({ row: index, message: `Adresse email manquante ou invalide: "${email}"` });
+      errors.push({ row: line, message: `Adresse email manquante ou invalide: "${email}"` });
       return;
     }
+    const firstLine = firstLineByEmail.get(email);
+    if (firstLine !== undefined) {
+      errors.push({ row: line, message: `Doublon dans le fichier : ${email} (déjà présent ligne ${firstLine})` });
+      return;
+    }
+    firstLineByEmail.set(email, line);
+    candidateLines.push(line);
 
     candidates.push({
       prenom: prenom || null,
@@ -312,7 +326,10 @@ export async function importRows(
 
   const bulkResult = await contactService.bulkCreate(ownerId, candidates);
 
-  const combinedErrors = [...errors, ...bulkResult.errors];
+  const combinedErrors = [
+    ...errors,
+    ...bulkResult.errors.map((e) => ({ ...e, row: candidateLines[e.row] ?? e.row })),
+  ].sort((a, b) => a.row - b.row);
 
   const hasFixedTags = !!tagNames && tagNames.length > 0;
   const hasGroupTags = groupValueByEmail.size > 0;

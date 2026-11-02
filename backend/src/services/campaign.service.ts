@@ -1,3 +1,4 @@
+import fs from "fs";
 import type { Campaign, CampaignStatus, CampaignTargetType, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { NotFoundError, ValidationError } from "../errors/errors";
@@ -93,9 +94,20 @@ export async function remove(ownerId: string, id: string): Promise<void> {
     throw new ValidationError("Impossible de supprimer une campagne en cours d'envoi");
   }
 
+  const attachments = await prisma.attachment.findMany({ where: { campaignId: id }, select: { storedPath: true } });
+
   // Cascades to recipients/attachments/logs/tracking events via
-  // onDelete: Cascade in the schema.
+  // onDelete: Cascade in the schema — but the cascade only removes the
+  // Attachment rows, not the uploaded files on disk.
   await prisma.campaign.delete({ where: { id } });
+
+  await Promise.all(
+    attachments.map((a) =>
+      fs.promises.unlink(a.storedPath).catch((err: NodeJS.ErrnoException) => {
+        if (err.code !== "ENOENT") throw err;
+      })
+    )
+  );
 }
 
 export async function list(ownerId: string): Promise<Campaign[]> {
@@ -198,7 +210,7 @@ export async function resolveEligibleContacts(
     candidateContactIds = Array.from(new Set([...fromSegments, ...fromTags]));
   } else {
     const allContacts = await prisma.contact.findMany({
-      where: { ownerId, isUnsubscribed: false },
+      where: { ownerId, isUnsubscribed: false, bouncedAt: null },
       select: { id: true },
     });
     candidateContactIds = allContacts.map((c) => c.id);
@@ -208,7 +220,7 @@ export async function resolveEligibleContacts(
   // for SINGLE, where an unsubscribed target simply resolves to zero
   // recipients rather than being force-sent to.
   const eligibleContacts = await prisma.contact.findMany({
-    where: { id: { in: candidateContactIds }, ownerId, isUnsubscribed: false },
+    where: { id: { in: candidateContactIds }, ownerId, isUnsubscribed: false, bouncedAt: null },
     include: { tags: { include: { tag: true } } },
   });
 

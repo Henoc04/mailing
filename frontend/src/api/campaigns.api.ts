@@ -126,3 +126,53 @@ export async function getProgress(id: string): Promise<CampaignProgress> {
   const { data } = await client.get<CampaignProgress>(`/campaigns/${id}/progress`);
   return data;
 }
+
+export async function testSend(id: string, input: { email: string; contactId?: string }): Promise<{ sentTo: string }> {
+  const { data } = await client.post<{ sentTo: string }>(`/campaigns/${id}/test-send`, input);
+  return data;
+}
+
+export type RecipientStatus = "PENDING" | "SENDING" | "SENT" | "FAILED" | "CANCELLED";
+
+export interface RecipientLogItem {
+  id: string;
+  email: string;
+  name: string;
+  status: RecipientStatus;
+  attempts: number;
+  errorMessage: string | null;
+  sentAt: string | null;
+  durationMs: number | null;
+  openedAt: string | null;
+  openCount: number;
+}
+
+export interface RecipientLogPage {
+  items: RecipientLogItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export async function listRecipients(
+  id: string,
+  query: { status?: RecipientStatus; search?: string; page?: number; pageSize?: number }
+): Promise<RecipientLogPage> {
+  const { data } = await client.get<RecipientLogPage>(`/campaigns/${id}/recipients`, { params: query });
+  return data;
+}
+
+export interface TagStat {
+  tagId: string | null;
+  tagName: string;
+  recipients: number;
+  sent: number;
+  failed: number;
+  opened: number;
+  openRate: number;
+}
+
+export async function statsByTag(id: string): Promise<TagStat[]> {
+  const { data } = await client.get<TagStat[]>(`/campaigns/${id}/stats-by-tag`);
+  return data;
+}

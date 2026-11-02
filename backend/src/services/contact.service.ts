@@ -70,6 +70,13 @@ export async function update(ownerId: string, id: string, input: UpdateContactIn
       where: { id },
       data: {
         ...rest,
+        // A corrected email address gets a fresh chance: the bounce flag
+        // belonged to the old address.
+        ...(rest.email !== undefined && rest.email !== existing.email ? { bouncedAt: null } : {}),
+        // Keep the audit timestamp consistent with manual (un)subscribe edits.
+        ...(rest.isUnsubscribed !== undefined && rest.isUnsubscribed !== existing.isUnsubscribed
+          ? { unsubscribedAt: rest.isUnsubscribed ? new Date() : null }
+          : {}),
         ...(tagIds
           ? {
               tags: {

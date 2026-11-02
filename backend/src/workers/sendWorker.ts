@@ -88,11 +88,18 @@ import {
   markRecipientSending,
   markRecipientSent,
   markRecipientFailed,
+  markRecipientSkipped,
   startDueScheduledCampaigns,
 } from "../services/sendQueue.service";
 import { pickForRotation } from "../services/smtpAccount.service";
-import { sendMail, isRetryableSmtpError } from "../services/smtpTransport.service";
-import { renderCampaignContent, injectTracking } from "../services/mergeEngine.service";
+import { sendMail, isRetryableSmtpError, isHardBounce } from "../services/smtpTransport.service";
+import {
+  renderCampaignContent,
+  injectTracking,
+  appendUnsubscribeFooter,
+  buildUnsubscribeUrl,
+  htmlToText,
+} from "../services/mergeEngine.service";
 
 const TICK_INTERVAL_MS = 300;
 
@@ -343,8 +350,19 @@ async function processRecipientSend(
 ): Promise<void> {
   const contact = await prisma.contact.findUnique({
     where: { id: dueRecipient.contactId },
-    select: { email: true },
+    select: { id: true, email: true, isUnsubscribed: true, bouncedAt: true },
   });
+
+  // The queue is materialized when the campaign starts; a contact may have
+  // unsubscribed (or been flagged as a dead address) since then.
+  if (contact && (contact.isUnsubscribed || contact.bouncedAt)) {
+    await markRecipientSkipped(
+      dueRecipient.id,
+      contact.isUnsubscribed ? "Contact désinscrit — envoi annulé" : "Adresse invalide (rebond) — envoi annulé"
+    );
+    await emitProgressSnapshot(campaign.id, campaign);
+    return;
+  }
 
   if (!contact) {
     await markRecipientFailed(dueRecipient.id, {
@@ -380,11 +398,15 @@ async function processRecipientSend(
     mergeData,
   });
 
-  const bodyHtml = injectTracking({
-    bodyHtml: renderedBodyHtml,
-    trackingToken: dueRecipient.trackingToken,
-    publicBaseUrl: env.PUBLIC_BASE_URL,
-  });
+  const unsubscribeUrl = buildUnsubscribeUrl(env.PUBLIC_BASE_URL, dueRecipient.trackingToken);
+  const bodyHtml = appendUnsubscribeFooter(
+    injectTracking({
+      bodyHtml: renderedBodyHtml,
+      trackingToken: dueRecipient.trackingToken,
+      publicBaseUrl: env.PUBLIC_BASE_URL,
+    }),
+    unsubscribeUrl
+  );
 
   const accountIds = sendContext.smtpAccounts.map((a) => a.id);
   const { accountId: smtpAccountId, nextIndex } = pickForRotation(
@@ -406,6 +428,12 @@ async function processRecipientSend(
       to: contact.email,
       subject,
       html: bodyHtml,
+      text: htmlToText(bodyHtml),
+      // RFC 8058 one-click unsubscribe — required by Gmail/Yahoo for bulk senders.
+      headers: {
+        "List-Unsubscribe": `<${unsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
       attachments,
     });
     const durationMs = Date.now() - start;
@@ -421,6 +449,11 @@ async function processRecipientSend(
     const durationMs = Date.now() - start;
     const retryable = isRetryableSmtpError(err);
     const errorMessage = err instanceof Error ? err.message : String(err);
+
+    if (isHardBounce(err)) {
+      await prisma.contact.update({ where: { id: contact.id }, data: { bouncedAt: new Date() } });
+      logger.info({ contactId: contact.id }, "sendWorker: contact flagged as hard bounce, excluded from future sends");
+    }
 
     await markRecipientFailed(dueRecipient.id, {
       errorMessage,

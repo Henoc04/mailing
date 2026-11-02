@@ -1,227 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { isAxiosError } from "axios";
 import * as campaignsApi from "../../api/campaigns.api";
-import type { CreateCampaignInput } from "../../api/campaigns.api";
 import * as templatesApi from "../../api/templates.api";
 import * as segmentsApi from "../../api/segments.api";
 import * as smtpAccountsApi from "../../api/smtpAccounts.api";
-import * as contactsApi from "../../api/contacts.api";
 import * as tagsApi from "../../api/tags.api";
-import type { ApiErrorBody, CampaignTargetType, ContactWithTags } from "../../api/types";
+import type { CampaignTargetType, ContactWithTags } from "../../api/types";
 import { Button } from "../../components/ui/Button";
 import { useToast } from "../../components/ui/ToastProvider";
-
-// ---------------------------------------------------------------------------
-// Wizard form shape
-// ---------------------------------------------------------------------------
-// Local, string-friendly mirror of CreateCampaignInput. Numeric/datetime
-// fields are kept as strings while being edited (so inputs can be empty
-// without fighting `NaN`) and are coerced to the API shape only inside
-// `buildPayload()`.
-interface WizardFormState {
-  name: string;
-  templateId: string;
-  subjectOverride: string;
-  targetType: CampaignTargetType;
-  targetContactId: string;
-  segmentIds: string[];
-  tagIds: string[];
-  smtpAccountIds: string[];
-  useRotation: boolean;
-  baseDelayMs: string;
-  jitterMs: string;
-  maxPerMinute: string;
-  maxPerHour: string;
-  maxRetries: string;
-  scheduledAt: string;
-}
-
-const EMPTY_FORM: WizardFormState = {
-  name: "",
-  templateId: "",
-  subjectOverride: "",
-  targetType: "SEGMENTS",
-  targetContactId: "",
-  segmentIds: [],
-  tagIds: [],
-  smtpAccountIds: [],
-  useRotation: false,
-  baseDelayMs: "3000",
-  jitterMs: "2000",
-  maxPerMinute: "",
-  maxPerHour: "",
-  maxRetries: "3",
-  scheduledAt: "",
-};
-
-// Order matters: "Options d'envoi" (SMTP account selection) must come
-// before "Pièces jointes" because saving the campaign for the first time
-// (needed to attach files) requires smtpAccountIds to already be set —
-// the backend's createCampaignSchema always requires at least one SMTP
-// account. Putting attachments after SMTP selection means the campaign
-// can always be auto-saved by the time the user reaches that step.
-const STEP_LABELS = [
-  "Infos & modèle",
-  "Destinataires",
-  "Options d'envoi",
-  "Pièces jointes",
-  "Aperçu",
-  "Récapitulatif",
-];
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (isAxiosError<ApiErrorBody>(error) && error.response?.data?.message) {
-    return error.response.data.message;
-  }
-  return fallback;
-}
-
-// Mirrors createCampaignSchema/updateCampaignSchema exactly (backend/src/dto/campaign.dto.ts):
-//  - smtpAccountIds must always have >= 1 entry
-//  - targetContactId required when targetType === "SINGLE"
-//  - segmentIds OR tagIds must be non-empty when targetType === "SEGMENTS"
-//    (a Tag is itself a static "groupe de contacts" — selecting one directly
-//    is an alternative to building a full Segment filter rule)
-function validateStep(step: number, form: WizardFormState): string[] {
-  const errors: string[] = [];
-
-  if (step === 0) {
-    if (!form.name.trim()) errors.push("Le nom de la campagne est requis.");
-  }
-
-  if (step === 1) {
-    if (form.targetType === "SINGLE" && !form.targetContactId) {
-      errors.push("Veuillez sélectionner un contact.");
-    }
-    if (form.targetType === "SEGMENTS" && form.segmentIds.length === 0 && form.tagIds.length === 0) {
-      errors.push("Veuillez sélectionner au moins un segment ou un groupe.");
-    }
-  }
-
-  if (step === 2) {
-    if (form.smtpAccountIds.length === 0) {
-      errors.push("Veuillez sélectionner au moins un compte SMTP.");
-    }
-    const baseDelay = Number(form.baseDelayMs);
-    if (form.baseDelayMs.trim() === "" || Number.isNaN(baseDelay) || baseDelay < 0) {
-      errors.push("Le délai de base doit être un nombre positif.");
-    }
-    const jitter = Number(form.jitterMs);
-    if (form.jitterMs.trim() === "" || Number.isNaN(jitter) || jitter < 0) {
-      errors.push("La marge aléatoire doit être un nombre positif.");
-    }
-    if (form.maxPerMinute.trim() && (Number.isNaN(Number(form.maxPerMinute)) || Number(form.maxPerMinute) <= 0)) {
-      errors.push("La limite par minute doit être un nombre positif.");
-    }
-    if (form.maxPerHour.trim() && (Number.isNaN(Number(form.maxPerHour)) || Number(form.maxPerHour) <= 0)) {
-      errors.push("La limite par heure doit être un nombre positif.");
-    }
-    const maxRetries = Number(form.maxRetries);
-    if (form.maxRetries.trim() === "" || Number.isNaN(maxRetries) || maxRetries < 0) {
-      errors.push("Le nombre de tentatives doit être un nombre positif ou nul.");
-    }
-  }
-
-  return errors;
-}
-
-function buildPayload(form: WizardFormState): CreateCampaignInput {
-  return {
-    name: form.name.trim(),
-    templateId: form.templateId || null,
-    subjectOverride: form.subjectOverride.trim() ? form.subjectOverride.trim() : null,
-    targetType: form.targetType,
-    targetContactId: form.targetType === "SINGLE" ? form.targetContactId || null : null,
-    segmentIds: form.targetType === "SEGMENTS" ? form.segmentIds : [],
-    tagIds: form.targetType === "SEGMENTS" ? form.tagIds : [],
-    smtpAccountIds: form.smtpAccountIds,
-    useRotation: form.useRotation,
-    baseDelayMs: Number(form.baseDelayMs) || 0,
-    jitterMs: Number(form.jitterMs) || 0,
-    maxPerMinute: form.maxPerMinute.trim() ? Number(form.maxPerMinute) : null,
-    maxPerHour: form.maxPerHour.trim() ? Number(form.maxPerHour) : null,
-    maxRetries: Number(form.maxRetries) || 0,
-    // <input type="datetime-local"> yields "YYYY-MM-DDTHH:mm" (no timezone/seconds),
-    // which fails zod's `.datetime()` check — append seconds + convert to a
-    // full ISO instant via `new Date(...).toISOString()`.
-    scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : null,
-  };
-}
-
-// Inverse of `new Date(datetimeLocalValue).toISOString()` above: converts a UTC
-// ISO instant from the API back into the "YYYY-MM-DDTHH:mm" local wall-clock
-// string a `datetime-local` input expects. Using `.slice(0, 16)` on the ISO
-// string directly (the previous approach) would instead grab the raw UTC
-// hour/minute, silently shifting the displayed time by the browser's UTC offset.
-function toDatetimeLocalValue(isoString: string): string {
-  const date = new Date(isoString);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(
-    date.getMinutes()
-  )}`;
-}
-
-// -----------------------------------------------------------------------
-// Debounced searchable contact picker — reused for Step 2 (SINGLE target)
-// and Step 5 (preview), each with its own independent search/selection.
-// -----------------------------------------------------------------------
-interface ContactPickerProps {
-  selectedContactId: string;
-  onSelect: (contact: ContactWithTags) => void;
-}
-
-function ContactPicker({ selectedContactId, onSelect }: ContactPickerProps) {
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["contacts", "picker", debouncedSearch],
-    queryFn: () => contactsApi.list({ search: debouncedSearch || undefined, pageSize: 10 }),
-  });
-
-  const contacts = data?.items ?? [];
-
-  return (
-    <div className="space-y-2">
-      <input
-        className="input"
-        placeholder="Rechercher un contact (nom, email...)"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-      <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700">
-        {isLoading ? (
-          <p className="p-3 text-sm text-gray-500 dark:text-gray-400">Recherche...</p>
-        ) : contacts.length === 0 ? (
-          <p className="p-3 text-sm text-gray-500 dark:text-gray-400">Aucun contact trouvé.</p>
-        ) : (
-          contacts.map((contact) => (
-            <button
-              type="button"
-              key={contact.id}
-              onClick={() => onSelect(contact)}
-              className={`flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 ${
-                selectedContactId === contact.id ? "bg-brand-50 dark:bg-brand-900/30" : ""
-              }`}
-            >
-              <span className="font-medium text-gray-900 dark:text-gray-100">
-                {contact.prenom} {contact.nom}
-              </span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">{contact.email}</span>
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
+import { ContactPicker } from "./wizard/ContactPicker";
+import { TestSendPanel } from "./wizard/TestSendPanel";
+import {
+  EMPTY_FORM,
+  STEP_LABELS,
+  buildPayload,
+  extractErrorMessage,
+  toDatetimeLocalValue,
+  validateStep,
+  type WizardFormState,
+} from "./wizard/wizardForm";
 
 export default function CampaignWizardPage() {
   const { id } = useParams<{ id: string }>();
@@ -992,6 +790,8 @@ export default function CampaignWizardPage() {
                     />
                   </div>
                 )}
+
+                <TestSendPanel campaignId={campaignId} contactId={previewContact?.id} />
               </>
             )}
           </div>

@@ -63,6 +63,18 @@ export const previewRecipientsSchema = z.object({
   tagIds: z.array(z.string()).optional().default([]),
 });
 
+export const testSendSchema = z.object({
+  email: z.string().trim().email("Adresse email invalide"),
+  contactId: z.string().optional(),
+});
+
+export const listRecipientsQuerySchema = z.object({
+  status: z.enum(["PENDING", "SENDING", "SENT", "FAILED", "CANCELLED"]).optional(),
+  search: z.string().trim().max(200).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+
 export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;
 export type UpdateCampaignInput = z.infer<typeof updateCampaignSchema>;
 export type PreviewRecipientsInput = z.infer<typeof previewRecipientsSchema>;

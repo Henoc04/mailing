@@ -34,8 +34,15 @@ export class ConflictError extends AppError {
 }
 
 export class SmtpError extends AppError {
-  constructor(message = "SMTP operation failed") {
+  // Carried over from the underlying nodemailer error so callers can still
+  // classify the failure (retryable vs permanent, hard bounce) after wrapping.
+  public readonly responseCode?: number;
+  public readonly response?: string;
+
+  constructor(message = "SMTP operation failed", details?: { responseCode?: number; response?: string }) {
     super(message, 502);
+    this.responseCode = details?.responseCode;
+    this.response = details?.response;
   }
 }
 

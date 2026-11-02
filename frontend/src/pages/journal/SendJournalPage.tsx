@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import * as campaignsApi from "../../api/campaigns.api";
 import type { Campaign, CampaignStatus } from "../../api/types";
 import { Badge, type BadgeColor } from "../../components/ui/Badge";
+import { CLICK_TRACKING_ENABLED } from "../../config/features";
 
 type SortKey = "name" | "status" | "sentCount" | "failedCount" | "openedCount" | "clickedCount" | "startedAt" | "completedAt";
 type SortDirection = "asc" | "desc";
@@ -159,9 +160,11 @@ export default function SendJournalPage() {
                 <th scope="col" className="px-4 py-3">
                   <SortHeader label="Ouvertures" sortKey="openedCount" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
                 </th>
-                <th scope="col" className="px-4 py-3">
-                  <SortHeader label="Clics" sortKey="clickedCount" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                </th>
+                {CLICK_TRACKING_ENABLED && (
+                  <th scope="col" className="px-4 py-3">
+                    <SortHeader label="Clics" sortKey="clickedCount" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
+                  </th>
+                )}
                 <th scope="col" className="px-4 py-3">
                   <SortHeader label="Démarré le" sortKey="startedAt" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
                 </th>
@@ -179,7 +182,7 @@ export default function SendJournalPage() {
             <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-900">
               {filteredAndSorted.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                  <td colSpan={CLICK_TRACKING_ENABLED ? 9 : 8} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                     Aucune campagne ne correspond à votre recherche.
                   </td>
                 </tr>
@@ -195,7 +198,9 @@ export default function SendJournalPage() {
                     <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{campaign.sentCount}</td>
                     <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{campaign.failedCount}</td>
                     <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{campaign.openedCount}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{campaign.clickedCount}</td>
+                    {CLICK_TRACKING_ENABLED && (
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{campaign.clickedCount}</td>
+                    )}
                     <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
                       {formatDateTime(campaign.startedAt)}
                     </td>

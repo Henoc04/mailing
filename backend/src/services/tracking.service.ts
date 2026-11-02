@@ -49,7 +49,31 @@ export async function recordOpen(trackingToken: string, meta: TrackingMeta): Pro
     await campaignService.updateCounters(recipient.campaignId, { opened: 1 });
   }
 
-  emitCampaignProgress(recipient.campaignId, { type: "open", campaignId: recipient.campaignId });
+  await emitCountersSnapshot(recipient.campaignId);
+}
+
+/**
+ * Pushes the campaign's full counters (not just "an open happened"): the
+ * progress page replaces its state with whatever it receives, so a partial
+ * payload would blank its numbers until the next poll.
+ */
+async function emitCountersSnapshot(campaignId: string): Promise<void> {
+  const snapshot = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: {
+      status: true,
+      totalRecipients: true,
+      sentCount: true,
+      failedCount: true,
+      openedCount: true,
+      clickedCount: true,
+      startedAt: true,
+      completedAt: true,
+    },
+  });
+  if (snapshot) {
+    emitCampaignProgress(campaignId, snapshot);
+  }
 }
 
 const SAFE_URL_SCHEME_PATTERN = /^https?:\/\//i;
@@ -99,7 +123,7 @@ export async function recordClick(trackingToken: string, targetUrl: string, meta
 
   await campaignService.updateCounters(recipient.campaignId, { clicked: 1 });
 
-  emitCampaignProgress(recipient.campaignId, { type: "click", campaignId: recipient.campaignId });
+  await emitCountersSnapshot(recipient.campaignId);
 
   return safeUrl;
 }

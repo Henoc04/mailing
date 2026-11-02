@@ -43,6 +43,23 @@ services:
     volumes:
       - backend-uploads:/app/uploads
 
+  # Daily gzipped dump of the database into ./backups (14 days kept).
+  # Restore: gunzip -c backups/mailing_XXXX.sql.gz | docker compose exec -T mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" mailing
+  db-backup:
+    image: mysql:8.0
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-mailing}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-db.sh:/backup-db.sh:ro
+    entrypoint: ["sh", "/backup-db.sh"]
+
   frontend:
     build:
       context: ./frontend

@@ -184,6 +184,19 @@ async function checkCampaignCompletion(campaignId: string): Promise<void> {
   }
 }
 
+/**
+ * Drops a queued recipient without sending (e.g. the contact unsubscribed or
+ * was flagged as a hard bounce after the queue was materialized). Not
+ * counted as a failure: nothing went wrong, the send simply no longer applies.
+ */
+export async function markRecipientSkipped(recipientId: string, reason: string): Promise<void> {
+  const recipient = await prisma.campaignRecipient.update({
+    where: { id: recipientId },
+    data: { status: "CANCELLED", errorMessage: reason },
+  });
+  await checkCampaignCompletion(recipient.campaignId);
+}
+
 export interface MarkRecipientSentParams {
   smtpAccountId: string;
   durationMs: number;

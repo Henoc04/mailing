@@ -62,6 +62,9 @@ export interface Contact {
   siteWeb: string | null;
   notes: string | null;
   isUnsubscribed: boolean;
+  unsubscribedAt: string | null;
+  // Set when an SMTP server permanently rejected the address; excluded from campaigns.
+  bouncedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

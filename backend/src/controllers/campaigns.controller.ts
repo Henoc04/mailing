@@ -2,6 +2,7 @@ import fs from "fs";
 import type { Request, Response } from "express";
 import { asyncHandler } from "./asyncHandler";
 import * as campaignService from "../services/campaign.service";
+import * as campaignInsights from "../services/campaignInsights.service";
 import { prisma } from "../lib/prisma";
 import { NotFoundError, ValidationError } from "../errors/errors";
 
@@ -102,4 +103,23 @@ export const removeAttachment = asyncHandler(async (req: Request, res: Response)
   });
 
   res.status(204).send();
+});
+
+export const testSend = asyncHandler(async (req: Request, res: Response) => {
+  const result = await campaignInsights.sendTestEmail(req.user!.id, req.params.id, req.body);
+  res.status(200).json(result);
+});
+
+export const listRecipients = asyncHandler(async (req: Request, res: Response) => {
+  const result = await campaignInsights.listRecipients(
+    req.user!.id,
+    req.params.id,
+    req.query as unknown as Parameters<typeof campaignInsights.listRecipients>[2]
+  );
+  res.status(200).json(result);
+});
+
+export const statsByTag = asyncHandler(async (req: Request, res: Response) => {
+  const result = await campaignInsights.statsByTag(req.user!.id, req.params.id);
+  res.status(200).json(result);
 });

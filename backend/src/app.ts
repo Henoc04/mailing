@@ -8,6 +8,7 @@ import { notFound } from "./middleware/notFound.middleware";
 import { errorHandler } from "./middleware/errorHandler.middleware";
 import apiRoutes from "./routes/index";
 import trackingRoutes from "./routes/tracking.routes";
+import unsubscribeRoutes from "./routes/unsubscribe.routes";
 import { TEMPLATE_IMAGES_DIR } from "./middleware/upload.middleware";
 
 export const app: Express = express();
@@ -38,6 +39,11 @@ app.use(
     setHeaders: (res) => res.setHeader("Cross-Origin-Resource-Policy", "cross-origin"),
   })
 );
+
+// Public unsubscribe page/one-click endpoint (no auth: opened by email
+// recipients and by Gmail/Yahoo's servers). Mounted before the /api router
+// so requireAuth-protected routes never see it.
+app.use("/api/unsubscribe", unsubscribeRoutes);
 
 app.use("/api", apiRateLimiter, apiRoutes);
 

@@ -105,6 +105,8 @@ export interface SendMailParams {
   to: string;
   subject: string;
   html: string;
+  text?: string;
+  headers?: Record<string, string>;
   attachments?: Array<{ filename: string; path: string }>;
 }
 
@@ -121,7 +123,7 @@ export interface SendMailResult {
  * to catch one error class to decide on retry/backoff.
  */
 export async function sendMail(params: SendMailParams): Promise<SendMailResult> {
-  const { smtpAccountId, to, subject, html, attachments } = params;
+  const { smtpAccountId, to, subject, html, text, headers, attachments } = params;
 
   const { transporter, fromEmail, fromName } = await getTransporter(smtpAccountId);
 
@@ -131,6 +133,8 @@ export async function sendMail(params: SendMailParams): Promise<SendMailResult> 
       to,
       subject,
       html,
+      text,
+      headers,
       attachments,
     });
 
@@ -141,8 +145,34 @@ export async function sendMail(params: SendMailParams): Promise<SendMailResult> 
     }
 
     const message = err instanceof Error ? err.message : "Erreur d'envoi SMTP inconnue";
-    throw new SmtpError(message);
+    const e = (typeof err === "object" && err !== null ? err : {}) as SmtpLikeError & { response?: unknown };
+    throw new SmtpError(message, {
+      responseCode: typeof e.responseCode === "number" ? e.responseCode : undefined,
+      response: typeof e.response === "string" ? e.response : undefined,
+    });
   }
+}
+
+/**
+ * True when the failure proves the address itself is unusable (unknown
+ * mailbox, unknown domain) — as opposed to a policy/spam rejection (554),
+ * a full mailbox or a transient error. Such contacts must not be mailed
+ * again: repeated sends to dead addresses hurt the sender's reputation.
+ */
+export function isHardBounce(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) {
+    return false;
+  }
+  const e = err as SmtpLikeError & { response?: unknown };
+  const response = typeof e.response === "string" ? e.response : "";
+
+  // Enhanced status codes 5.1.x = bad destination mailbox/system address.
+  if (/\b5\.1\.\d\b/.test(response)) {
+    return true;
+  }
+  return e.responseCode === 550 || e.responseCode === 551 || e.responseCode === 553
+    ? !/\b5\.[27]\.\d\b/.test(response) // 5.2.x mailbox full / 5.7.x policy: not the address's fault
+    : false;
 }
 
 // SMTP response codes that indicate a transient condition (temporary

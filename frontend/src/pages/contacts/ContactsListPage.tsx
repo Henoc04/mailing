@@ -489,8 +489,8 @@ export default function ContactsListPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        <Badge color={contact.isUnsubscribed ? "red" : "green"}>
-                          {contact.isUnsubscribed ? "Désinscrit" : "Actif"}
+                        <Badge color={contact.isUnsubscribed || contact.bouncedAt ? "red" : "green"}>
+                          {contact.isUnsubscribed ? "Désinscrit" : contact.bouncedAt ? "Adresse invalide" : "Actif"}
                         </Badge>
                       </td>
                       <td className="px-4 py-3 text-sm">
