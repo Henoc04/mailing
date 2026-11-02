@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import * as campaignsApi from "../../../api/campaigns.api";
 import { Button } from "../../../components/ui/Button";
+import { Icon } from "../../../components/ui/Icon";
 import { useToast } from "../../../components/ui/ToastProvider";
 import { useAuth } from "../../../context/AuthContext";
 import { extractErrorMessage } from "./wizardForm";
@@ -29,26 +30,38 @@ export function TestSendPanel({ campaignId, contactId }: Readonly<TestSendPanelP
   });
 
   return (
-    <div className="space-y-2 rounded-md border border-gray-200 p-4 dark:border-gray-700">
-      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Envoyer un email de test</p>
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        Recevez la campagne telle que vos destinataires la verront (objet préfixé par [TEST]). Rien n'est
-        comptabilisé dans les statistiques.
-      </p>
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-800/30">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+          <Icon name="mail" className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Envoyer un email de test</p>
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+            Recevez la campagne telle que vos destinataires la verront (objet préfixé par [TEST]). Rien n'est
+            comptabilisé dans les statistiques.
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
         <input
           type="email"
-          className="input max-w-xs"
+          className="input sm:max-w-xs"
           placeholder="votre@email.fr"
+          aria-label="Adresse de réception du test"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
         <Button
+          type="button"
           variant="secondary"
-          disabled={!email.trim() || testMutation.isPending}
+          className="w-full sm:w-auto"
+          disabled={!email.trim()}
+          loading={testMutation.isPending}
           onClick={() => testMutation.mutate()}
         >
-          {testMutation.isPending ? "Envoi..." : "Envoyer le test"}
+          {!testMutation.isPending && <Icon name="send" className="h-4 w-4" />}
+          Envoyer le test
         </Button>
       </div>
     </div>

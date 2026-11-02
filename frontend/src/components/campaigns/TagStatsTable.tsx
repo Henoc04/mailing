@@ -4,20 +4,54 @@ import type { TagStat } from "../../api/campaigns.api";
 import { Table, type TableColumn } from "../ui/Table";
 
 const COLUMNS: TableColumn<TagStat>[] = [
-  { key: "tag", header: "Groupe", render: (s) => <span className="font-medium">{s.tagName}</span> },
-  { key: "recipients", header: "Destinataires", render: (s) => s.recipients.toLocaleString("fr-FR") },
-  { key: "sent", header: "Envoyés", render: (s) => s.sent.toLocaleString("fr-FR") },
-  { key: "failed", header: "Échecs", render: (s) => s.failed.toLocaleString("fr-FR") },
-  { key: "opened", header: "Ouvertures", render: (s) => s.opened.toLocaleString("fr-FR") },
+  {
+    key: "tag",
+    header: "Groupe",
+    render: (s) => (
+      <div className="min-w-0">
+        <span className="break-words font-medium text-gray-900 dark:text-gray-100">{s.tagName}</span>
+        {/* Counts hidden on phones are summarised here instead. */}
+        <p className="mt-0.5 text-xs tabular-nums text-gray-500 dark:text-gray-400 md:hidden">
+          {s.recipients.toLocaleString("fr-FR")} dest. · {s.sent.toLocaleString("fr-FR")} envoyés ·{" "}
+          {s.failed.toLocaleString("fr-FR")} échecs · {s.opened.toLocaleString("fr-FR")} ouvertures
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "recipients",
+    header: "Destinataires",
+    hideBelow: "md",
+    className: "tabular-nums",
+    render: (s) => s.recipients.toLocaleString("fr-FR"),
+  },
+  { key: "sent", header: "Envoyés", hideBelow: "md", className: "tabular-nums", render: (s) => s.sent.toLocaleString("fr-FR") },
+  {
+    key: "failed",
+    header: "Échecs",
+    hideBelow: "md",
+    className: "tabular-nums",
+    render: (s) => s.failed.toLocaleString("fr-FR"),
+  },
+  {
+    key: "opened",
+    header: "Ouvertures",
+    hideBelow: "md",
+    className: "tabular-nums",
+    render: (s) => s.opened.toLocaleString("fr-FR"),
+  },
   {
     key: "rate",
     header: "Taux d'ouverture",
     render: (s) => (
       <div className="flex items-center gap-2">
-        <div className="h-2 w-20 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-          <div className="h-full bg-brand-500" style={{ width: `${Math.min(100, s.openRate)}%` }} />
+        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 sm:w-20">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-brand-500 to-violet-500"
+            style={{ width: `${Math.min(100, s.openRate)}%` }}
+          />
         </div>
-        <span>{s.openRate.toLocaleString("fr-FR")} %</span>
+        <span className="whitespace-nowrap tabular-nums">{s.openRate.toLocaleString("fr-FR")} %</span>
       </div>
     ),
   },
@@ -36,12 +70,14 @@ export function TagStatsTable({ campaignId }: Readonly<{ campaignId: string }>) 
   }
 
   return (
-    <div className="card space-y-3">
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Résultats par groupe</h2>
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        Un contact appartenant à plusieurs groupes est compté dans chacun d'eux.
-      </p>
+    <section className="space-y-3">
+      <div>
+        <h2 className="section-title">Résultats par groupe</h2>
+        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+          Un contact appartenant à plusieurs groupes est compté dans chacun d'eux.
+        </p>
+      </div>
       <Table columns={COLUMNS} rows={data} rowKey={(s) => s.tagId ?? "none"} />
-    </div>
+    </section>
   );
 }

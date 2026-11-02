@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import clsx from "clsx";
 import * as contactsApi from "../../api/contacts.api";
 import type { CreateContactInput, ListContactsQuery, UpdateContactInput } from "../../api/contacts.api";
 import * as tagsApi from "../../api/tags.api";
@@ -8,17 +9,42 @@ import type { ContactWithTags, Genre } from "../../api/types";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
+import { Icon } from "../../components/ui/Icon";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { ErrorState, LoadingState } from "../../components/ui/States";
 import { useToast } from "../../components/ui/ToastProvider";
 
 type SortableField = NonNullable<ListContactsQuery["sortBy"]>;
 
-const SORT_COLUMNS: Array<{ key: SortableField; label: string }> = [
+const SORT_COLUMNS: Array<{ key: SortableField; label: string; hideBelow?: "sm" | "md" | "lg" }> = [
   { key: "prenom", label: "Prénom" },
   { key: "nom", label: "Nom" },
   { key: "email", label: "Email" },
-  { key: "entreprise", label: "Entreprise" },
-  { key: "createdAt", label: "Créé le" },
+  { key: "entreprise", label: "Entreprise", hideBelow: "md" },
+  { key: "createdAt", label: "Créé le", hideBelow: "lg" },
 ];
+
+const HIDE_CLASSES = {
+  sm: "hidden sm:table-cell",
+  md: "hidden md:table-cell",
+  lg: "hidden lg:table-cell",
+} as const;
+
+const TH_CLASS =
+  "whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400";
+const TD_CLASS = "px-4 py-3.5 text-sm text-gray-700 dark:text-gray-300";
+
+const ERROR_CLASS = "mt-1.5 text-xs text-red-600 dark:text-red-400";
+
+function tagChipClass(selected: boolean): string {
+  return clsx(
+    "rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset transition",
+    selected
+      ? "bg-brand-600 text-white ring-brand-600 shadow-sm hover:bg-brand-500 dark:bg-brand-500 dark:ring-brand-500"
+      : "bg-white text-gray-700 ring-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700 dark:hover:bg-gray-700"
+  );
+}
 
 const PAGE_SIZE = 20;
 
@@ -335,29 +361,48 @@ export default function ContactsListPage() {
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
   const selectionCount = selectAllMatching ? total : selectedIds.size;
   const canSelectAllMatching = allPageSelected && !selectAllMatching && total > pageIds.length;
+  const hasFilters = Boolean(searchInput || tagId);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Contacts</h1>
-        <div className="flex gap-2">
-          <Link to="/contacts/import">
-            <Button variant="secondary">Importer</Button>
-          </Link>
-          <Button onClick={openCreateForm}>Ajouter un contact</Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Contacts"
+        description="Gérez votre carnet d'adresses, vos groupes et les désinscriptions."
+        actions={
+          <>
+            <Link
+              to="/contacts/import"
+              className="btn h-10 border border-gray-300 bg-white px-4 text-sm text-gray-700 shadow-sm hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-gray-800"
+            >
+              <Icon name="inbox" className="h-4 w-4" />
+              Importer
+            </Link>
+            <Button type="button" onClick={openCreateForm}>
+              <Icon name="plus" className="h-4 w-4" />
+              Ajouter un contact
+            </Button>
+          </>
+        }
+      />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          type="text"
-          className="input max-w-xs"
-          placeholder="Rechercher un contact..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="relative w-full sm:max-w-xs">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            type="search"
+            className="input pl-9"
+            placeholder="Rechercher un contact…"
+            aria-label="Rechercher un contact"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
+        </div>
         <select
-          className="input max-w-xs"
+          className="input w-full sm:max-w-xs"
+          aria-label="Filtrer par tag"
           value={tagId}
           onChange={(e) => {
             setTagId(e.target.value);
@@ -374,157 +419,256 @@ export default function ContactsListPage() {
       </div>
 
       {selectionCount > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm dark:border-brand-800 dark:bg-brand-900/30">
-          <span className="font-medium text-brand-800 dark:text-brand-200">
-            {selectionCount} contact(s) sélectionné(s)
-          </span>
-          {canSelectAllMatching && (
-            <button
-              type="button"
-              className="text-brand-700 underline hover:text-brand-800 dark:text-brand-300"
-              onClick={() => setSelectAllMatching(true)}
-            >
-              Sélectionner les {total} résultats de la recherche
-            </button>
-          )}
-          <Button size="sm" onClick={openBulkModal}>
-            Assigner à un groupe
-          </Button>
-          <Button variant="ghost" size="sm" onClick={clearSelection}>
-            Tout désélectionner
-          </Button>
+        <div className="flex animate-fade-in flex-col gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm dark:border-brand-500/30 dark:bg-brand-500/10 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-medium text-brand-800 dark:text-brand-200">
+              {selectionCount} contact(s) sélectionné(s)
+            </span>
+            {canSelectAllMatching && (
+              <button
+                type="button"
+                className="text-left font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200"
+                onClick={() => setSelectAllMatching(true)}
+              >
+                Sélectionner les {total} résultats de la recherche
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={openBulkModal}>
+              Assigner à un groupe
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={clearSelection}>
+              Tout désélectionner
+            </Button>
+          </div>
         </div>
       )}
 
       {isLoading ? (
-        <p className="text-gray-500 dark:text-gray-400">Chargement...</p>
+        <LoadingState label="Chargement des contacts…" />
       ) : isError ? (
-        <p className="text-red-600 dark:text-red-400">Impossible de charger les contacts.</p>
+        <ErrorState>Impossible de charger les contacts.</ErrorState>
+      ) : (data?.items.length ?? 0) === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <EmptyState
+            icon="users"
+            title="Aucun contact trouvé."
+            description={
+              hasFilters
+                ? "Essayez de modifier votre recherche ou le filtre par tag."
+                : "Ajoutez votre premier contact ou importez un fichier."
+            }
+            action={
+              hasFilters ? undefined : (
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Link to="/contacts/import" className="link text-sm">
+                    Importer un fichier
+                  </Link>
+                  <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">
+                    ·
+                  </span>
+                  <button type="button" className="link text-sm" onClick={openCreateForm}>
+                    Ajouter un contact
+                  </button>
+                </div>
+              )
+            }
+          />
+        </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-800">
-                <tr>
-                  <th className="px-4 py-3 text-left">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600"
-                      checked={allPageSelected}
-                      onChange={() => toggleSelectPage(pageIds)}
-                      aria-label="Sélectionner tous les contacts de cette page"
-                    />
-                  </th>
-                  {SORT_COLUMNS.map((column) => (
-                    <th
-                      key={column.key}
-                      scope="col"
-                      className="cursor-pointer px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                      onClick={() => toggleSort(column.key)}
-                    >
-                      {column.label}
-                      {sortBy === column.key && (sortDir === "asc" ? " ▲" : " ▼")}
-                    </th>
-                  ))}
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Genre
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Ville
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Tags
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Statut
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-900">
-                {(data?.items.length ?? 0) === 0 ? (
+          <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white shadow-soft dark:border-gray-800 dark:bg-gray-900">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                <thead className="bg-gray-50/80 dark:bg-gray-800/40">
                   <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                      Aucun contact trouvé.
-                    </td>
+                    <th scope="col" className="w-10 px-4 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        onChange={() => toggleSelectPage(pageIds)}
+                        aria-label="Sélectionner tous les contacts de cette page"
+                      />
+                    </th>
+                    {SORT_COLUMNS.map((column) => {
+                      const isSorted = sortBy === column.key;
+                      return (
+                        <th
+                          key={column.key}
+                          scope="col"
+                          aria-sort={isSorted ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                          className={clsx(TH_CLASS, column.hideBelow && HIDE_CLASSES[column.hideBelow])}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleSort(column.key)}
+                            className={clsx(
+                              "group inline-flex items-center gap-1 rounded uppercase tracking-wider transition hover:text-gray-900 dark:hover:text-gray-100",
+                              isSorted && "text-gray-900 dark:text-gray-100"
+                            )}
+                          >
+                            {column.label}
+                            <Icon
+                              name="chevronDown"
+                              className={clsx(
+                                "h-3.5 w-3.5 transition",
+                                isSorted ? "opacity-100" : "opacity-0 group-hover:opacity-50",
+                                isSorted && sortDir === "asc" && "rotate-180"
+                              )}
+                            />
+                          </button>
+                        </th>
+                      );
+                    })}
+                    <th scope="col" className={clsx(TH_CLASS, HIDE_CLASSES.lg)}>
+                      Genre
+                    </th>
+                    <th scope="col" className={clsx(TH_CLASS, HIDE_CLASSES.lg)}>
+                      Ville
+                    </th>
+                    <th scope="col" className={clsx(TH_CLASS, HIDE_CLASSES.md)}>
+                      Tags
+                    </th>
+                    <th scope="col" className={clsx(TH_CLASS, HIDE_CLASSES.sm)}>
+                      Statut
+                    </th>
+                    <th scope="col" className={clsx(TH_CLASS, "text-right")}>
+                      <span className="sr-only sm:not-sr-only">Actions</span>
+                    </th>
                   </tr>
-                ) : (
-                  data?.items.map((contact) => (
-                    <tr key={contact.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <td className="px-4 py-3 text-sm">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600"
-                          checked={selectAllMatching || selectedIds.has(contact.id)}
-                          onChange={() => toggleRowSelection(contact.id)}
-                          aria-label={`Sélectionner ${contact.nom}`}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <Link to={`/contacts/${contact.id}`} className="text-brand-600 hover:underline dark:text-brand-400">
-                          {contact.prenom ?? "—"}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{contact.nom}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{contact.email}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                        {contact.entreprise ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                        {new Date(contact.createdAt).toLocaleDateString("fr-FR")}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                        {contact.genre ? GENRE_LABELS[contact.genre] : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{contact.ville ?? "—"}</td>
-                      <td className="px-4 py-3 text-sm">
-                        <div className="flex flex-wrap gap-1">
-                          {contact.tags.map((tag) => (
-                            <Badge key={tag.id} color="purple">
-                              {tag.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <Badge color={contact.isUnsubscribed || contact.bouncedAt ? "red" : "green"}>
-                          {contact.isUnsubscribed ? "Désinscrit" : contact.bouncedAt ? "Adresse invalide" : "Actif"}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => openEditForm(contact)}>
-                            Modifier
-                          </Button>
-                          <Button variant="danger" size="sm" onClick={() => setDeletingContact(contact)}>
-                            Supprimer
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {data?.items.map((contact) => {
+                    const isSelected = selectAllMatching || selectedIds.has(contact.id);
+                    return (
+                      <tr
+                        key={contact.id}
+                        className={clsx(
+                          "transition-colors",
+                          isSelected
+                            ? "bg-brand-50/60 dark:bg-brand-500/5"
+                            : "hover:bg-gray-50/80 dark:hover:bg-gray-800/40"
+                        )}
+                      >
+                        <td className={TD_CLASS}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleRowSelection(contact.id)}
+                            aria-label={`Sélectionner ${contact.nom}`}
+                          />
+                        </td>
+                        <td className={clsx(TD_CLASS, "whitespace-nowrap")}>
+                          <Link to={`/contacts/${contact.id}`} className="link">
+                            {contact.prenom ?? "—"}
+                          </Link>
+                        </td>
+                        <td className={clsx(TD_CLASS, "whitespace-nowrap font-medium text-gray-900 dark:text-gray-100")}>
+                          <Link
+                            to={`/contacts/${contact.id}`}
+                            className="hover:text-brand-600 hover:underline dark:hover:text-brand-400"
+                          >
+                            {contact.nom}
+                          </Link>
+                        </td>
+                        <td className={TD_CLASS}>
+                          <span className="block max-w-[14rem] truncate" title={contact.email}>
+                            {contact.email}
+                          </span>
+                        </td>
+                        <td className={clsx(TD_CLASS, HIDE_CLASSES.md)}>
+                          <span className="block max-w-[12rem] truncate" title={contact.entreprise ?? undefined}>
+                            {contact.entreprise ?? "—"}
+                          </span>
+                        </td>
+                        <td className={clsx(TD_CLASS, HIDE_CLASSES.lg, "whitespace-nowrap tabular-nums")}>
+                          {new Date(contact.createdAt).toLocaleDateString("fr-FR")}
+                        </td>
+                        <td className={clsx(TD_CLASS, HIDE_CLASSES.lg)}>
+                          {contact.genre ? GENRE_LABELS[contact.genre] : "—"}
+                        </td>
+                        <td className={clsx(TD_CLASS, HIDE_CLASSES.lg)}>{contact.ville ?? "—"}</td>
+                        <td className={clsx(TD_CLASS, HIDE_CLASSES.md)}>
+                          <div className="flex min-w-[8rem] flex-wrap gap-1">
+                            {contact.tags.map((tag) => (
+                              <Badge key={tag.id} color="purple">
+                                {tag.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        </td>
+                        <td className={clsx(TD_CLASS, HIDE_CLASSES.sm)}>
+                          <Badge dot color={contact.isUnsubscribed || contact.bouncedAt ? "red" : "green"}>
+                            {contact.isUnsubscribed
+                              ? "Désinscrit"
+                              : contact.bouncedAt
+                              ? "Adresse invalide"
+                              : "Actif"}
+                          </Badge>
+                        </td>
+                        <td className={clsx(TD_CLASS, "text-right")}>
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEditForm(contact)}
+                              aria-label={`Modifier ${contact.nom}`}
+                            >
+                              Modifier
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                              onClick={() => setDeletingContact(contact)}
+                              aria-label={`Supprimer ${contact.nom}`}
+                            >
+                              <Icon name="trash" className="h-4 w-4" />
+                              <span className="hidden sm:inline">Supprimer</span>
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
-            <span>
+          <div className="flex flex-col gap-3 text-sm text-gray-600 dark:text-gray-300 sm:flex-row sm:items-center sm:justify-between">
+            <span className="tabular-nums">
               {rangeStart}–{rangeEnd} sur {total}
+              <span className="text-gray-400 dark:text-gray-500">
+                {" "}
+                · page {page}/{totalPages}
+              </span>
             </span>
             <div className="flex gap-2">
-              <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="flex-1 sm:flex-none"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                <Icon name="chevronLeft" className="h-4 w-4" />
                 Précédent
               </Button>
               <Button
+                type="button"
                 variant="secondary"
                 size="sm"
+                className="flex-1 sm:flex-none"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
               >
                 Suivant
+                <Icon name="chevronRight" className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -534,299 +678,355 @@ export default function ContactsListPage() {
       <Modal
         isOpen={isFormOpen}
         onClose={closeForm}
+        size="lg"
         title={editingContact ? "Modifier le contact" : "Ajouter un contact"}
+        description="Seuls le nom et l'email sont obligatoires."
       >
-        <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="prenom">
-                Prénom (optionnel)
-              </label>
-              <input
-                id="prenom"
-                className="input"
-                value={form.prenom}
-                onChange={(e) => setForm({ ...form, prenom: e.target.value })}
-              />
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <fieldset className="space-y-4">
+            <legend className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Identité
+            </legend>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="prenom">
+                  Prénom (optionnel)
+                </label>
+                <input
+                  id="prenom"
+                  className="input"
+                  autoComplete="given-name"
+                  autoFocus
+                  value={form.prenom}
+                  onChange={(e) => setForm({ ...form, prenom: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="nom">
+                  Nom
+                </label>
+                <input
+                  id="nom"
+                  className="input"
+                  autoComplete="family-name"
+                  aria-invalid={Boolean(formErrors.nom)}
+                  value={form.nom}
+                  onChange={(e) => setForm({ ...form, nom: e.target.value })}
+                />
+                {formErrors.nom && <p className={ERROR_CLASS}>{formErrors.nom}</p>}
+              </div>
+              <div>
+                <label className="label" htmlFor="genre">
+                  Genre
+                </label>
+                <select
+                  id="genre"
+                  className="input"
+                  value={form.genre}
+                  onChange={(e) => setForm({ ...form, genre: e.target.value as Genre | "" })}
+                >
+                  <option value="">— Non précisé —</option>
+                  {(Object.entries(GENRE_LABELS) as [Genre, string][]).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label" htmlFor="email">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  className="input"
+                  aria-invalid={Boolean(formErrors.email)}
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                />
+                {formErrors.email && <p className={ERROR_CLASS}>{formErrors.email}</p>}
+              </div>
             </div>
-            <div>
-              <label className="label" htmlFor="nom">
-                Nom
-              </label>
-              <input
-                id="nom"
-                className="input"
-                value={form.nom}
-                onChange={(e) => setForm({ ...form, nom: e.target.value })}
-              />
-              {formErrors.nom && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{formErrors.nom}</p>}
-            </div>
-          </div>
+          </fieldset>
 
-          <div>
-            <label className="label" htmlFor="genre">
-              Genre
-            </label>
-            <select
-              id="genre"
-              className="input"
-              value={form.genre}
-              onChange={(e) => setForm({ ...form, genre: e.target.value as Genre | "" })}
-            >
-              <option value="">— Non précisé —</option>
-              {(Object.entries(GENRE_LABELS) as [Genre, string][]).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="label" htmlFor="email">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              className="input"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-            {formErrors.email && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{formErrors.email}</p>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="entreprise">
-                Entreprise
-              </label>
-              <input
-                id="entreprise"
-                className="input"
-                value={form.entreprise}
-                onChange={(e) => setForm({ ...form, entreprise: e.target.value })}
-              />
+          <fieldset className="space-y-4">
+            <legend className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Coordonnées professionnelles
+            </legend>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="entreprise">
+                  Entreprise
+                </label>
+                <input
+                  id="entreprise"
+                  className="input"
+                  autoComplete="organization"
+                  value={form.entreprise}
+                  onChange={(e) => setForm({ ...form, entreprise: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="fonction">
+                  Fonction
+                </label>
+                <input
+                  id="fonction"
+                  className="input"
+                  autoComplete="organization-title"
+                  value={form.fonction}
+                  onChange={(e) => setForm({ ...form, fonction: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="telephone">
+                  Téléphone
+                </label>
+                <input
+                  id="telephone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  className="input"
+                  value={form.telephone}
+                  onChange={(e) => setForm({ ...form, telephone: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="siteWeb">
+                  Site internet
+                </label>
+                <input
+                  id="siteWeb"
+                  inputMode="url"
+                  autoComplete="url"
+                  className="input"
+                  value={form.siteWeb}
+                  onChange={(e) => setForm({ ...form, siteWeb: e.target.value })}
+                />
+              </div>
             </div>
-            <div>
-              <label className="label" htmlFor="fonction">
-                Fonction
-              </label>
-              <input
-                id="fonction"
-                className="input"
-                value={form.fonction}
-                onChange={(e) => setForm({ ...form, fonction: e.target.value })}
-              />
-            </div>
-          </div>
+          </fieldset>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="telephone">
-                Téléphone
-              </label>
-              <input
-                id="telephone"
-                className="input"
-                value={form.telephone}
-                onChange={(e) => setForm({ ...form, telephone: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="siteWeb">
-                Site internet
-              </label>
-              <input
-                id="siteWeb"
-                className="input"
-                value={form.siteWeb}
-                onChange={(e) => setForm({ ...form, siteWeb: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="label" htmlFor="adresse">
+          <fieldset className="space-y-4">
+            <legend className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
               Adresse
-            </label>
-            <input
-              id="adresse"
-              className="input"
-              value={form.adresse}
-              onChange={(e) => setForm({ ...form, adresse: e.target.value })}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+            </legend>
             <div>
-              <label className="label" htmlFor="codePostal">
-                Code postal
+              <label className="label" htmlFor="adresse">
+                Adresse
               </label>
               <input
-                id="codePostal"
+                id="adresse"
                 className="input"
-                value={form.codePostal}
-                onChange={(e) => setForm({ ...form, codePostal: e.target.value })}
+                autoComplete="street-address"
+                value={form.adresse}
+                onChange={(e) => setForm({ ...form, adresse: e.target.value })}
               />
             </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="codePostal">
+                  Code postal
+                </label>
+                <input
+                  id="codePostal"
+                  className="input"
+                  autoComplete="postal-code"
+                  value={form.codePostal}
+                  onChange={(e) => setForm({ ...form, codePostal: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="ville">
+                  Ville
+                </label>
+                <input
+                  id="ville"
+                  className="input"
+                  autoComplete="address-level2"
+                  value={form.ville}
+                  onChange={(e) => setForm({ ...form, ville: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="departement">
+                  Département
+                </label>
+                <input
+                  id="departement"
+                  className="input"
+                  value={form.departement}
+                  onChange={(e) => setForm({ ...form, departement: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="region">
+                  Région
+                </label>
+                <input
+                  id="region"
+                  className="input"
+                  autoComplete="address-level1"
+                  value={form.region}
+                  onChange={(e) => setForm({ ...form, region: e.target.value })}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label" htmlFor="pays">
+                  Pays
+                </label>
+                <input
+                  id="pays"
+                  className="input"
+                  autoComplete="country-name"
+                  value={form.pays}
+                  onChange={(e) => setForm({ ...form, pays: e.target.value })}
+                />
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset className="space-y-4">
+            <legend className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Suivi
+            </legend>
             <div>
-              <label className="label" htmlFor="ville">
-                Ville
+              <label className="label" htmlFor="notes">
+                Notes
               </label>
-              <input
-                id="ville"
+              <textarea
+                id="notes"
                 className="input"
-                value={form.ville}
-                onChange={(e) => setForm({ ...form, ville: e.target.value })}
+                rows={3}
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label" htmlFor="departement">
-                Département
-              </label>
+              <span className="label">Tags</span>
+              <div className="flex flex-wrap gap-2">
+                {tags?.length ? (
+                  tags.map((tag) => {
+                    const selected = form.tagIds.includes(tag.id);
+                    return (
+                      <button
+                        type="button"
+                        key={tag.id}
+                        aria-pressed={selected}
+                        onClick={() => toggleTagId(tag.id)}
+                        className={tagChipClass(selected)}
+                      >
+                        {selected && <Icon name="check" className="-ml-0.5 mr-1 inline h-3 w-3" />}
+                        {tag.name}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Aucun tag disponible.</p>
+                )}
+              </div>
+            </div>
+
+            <label
+              htmlFor="isUnsubscribed"
+              className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-700 transition hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40"
+            >
               <input
-                id="departement"
-                className="input"
-                value={form.departement}
-                onChange={(e) => setForm({ ...form, departement: e.target.value })}
+                id="isUnsubscribed"
+                type="checkbox"
+                checked={form.isUnsubscribed}
+                onChange={(e) => setForm({ ...form, isUnsubscribed: e.target.checked })}
               />
-            </div>
-            <div>
-              <label className="label" htmlFor="region">
-                Région
-              </label>
-              <input
-                id="region"
-                className="input"
-                value={form.region}
-                onChange={(e) => setForm({ ...form, region: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="label" htmlFor="pays">
-              Pays
-            </label>
-            <input
-              id="pays"
-              className="input"
-              value={form.pays}
-              onChange={(e) => setForm({ ...form, pays: e.target.value })}
-            />
-          </div>
-
-          <div>
-            <label className="label" htmlFor="notes">
-              Notes
-            </label>
-            <textarea
-              id="notes"
-              className="input"
-              rows={3}
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            />
-          </div>
-
-          <div>
-            <span className="label">Tags</span>
-            <div className="flex flex-wrap gap-2">
-              {tags?.length ? (
-                tags.map((tag) => {
-                  const selected = form.tagIds.includes(tag.id);
-                  return (
-                    <button
-                      type="button"
-                      key={tag.id}
-                      onClick={() => toggleTagId(tag.id)}
-                      className={
-                        selected
-                          ? "rounded-full bg-brand-600 px-3 py-1 text-xs font-medium text-white"
-                          : "rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-                      }
-                    >
-                      {tag.name}
-                    </button>
-                  );
-                })
-              ) : (
-                <p className="text-xs text-gray-500 dark:text-gray-400">Aucun tag disponible.</p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              id="isUnsubscribed"
-              type="checkbox"
-              checked={form.isUnsubscribed}
-              onChange={(e) => setForm({ ...form, isUnsubscribed: e.target.checked })}
-              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600"
-            />
-            <label className="text-sm text-gray-700 dark:text-gray-300" htmlFor="isUnsubscribed">
               Désinscrit
             </label>
-          </div>
+          </fieldset>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={closeForm}>
+          <div className="flex flex-col-reverse gap-2 border-t border-gray-100 pt-4 dark:border-gray-800 sm:flex-row sm:justify-end">
+            <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={closeForm}>
               Annuler
             </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Enregistrement..." : editingContact ? "Mettre à jour" : "Créer"}
+            <Button type="submit" className="w-full sm:w-auto" loading={isSaving}>
+              {editingContact ? "Mettre à jour" : "Créer"}
             </Button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={deletingContact !== null} onClose={() => setDeletingContact(null)} title="Supprimer le contact">
+      <Modal
+        isOpen={deletingContact !== null}
+        onClose={() => setDeletingContact(null)}
+        size="sm"
+        title="Supprimer le contact"
+      >
         <p className="text-sm text-gray-700 dark:text-gray-300">
           Voulez-vous vraiment supprimer «{" "}
-          {deletingContact?.prenom ? `${deletingContact.prenom} ${deletingContact.nom}` : deletingContact?.nom} » ?
-          Cette action est irréversible.
+          <span className="break-words font-medium text-gray-900 dark:text-gray-100">
+            {deletingContact?.prenom ? `${deletingContact.prenom} ${deletingContact.nom}` : deletingContact?.nom}
+          </span>{" "}
+          » ? Cette action est irréversible.
         </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setDeletingContact(null)}>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={() => setDeletingContact(null)}>
             Annuler
           </Button>
           <Button
+            type="button"
             variant="danger"
-            disabled={removeMutation.isPending}
+            className="w-full sm:w-auto"
+            loading={removeMutation.isPending}
             onClick={() => deletingContact && removeMutation.mutate(deletingContact.id)}
           >
-            {removeMutation.isPending ? "Suppression..." : "Supprimer"}
+            Supprimer
           </Button>
         </div>
       </Modal>
 
-      <Modal isOpen={isBulkModalOpen} onClose={closeBulkModal} title="Assigner à un groupe">
+      <Modal
+        isOpen={isBulkModalOpen}
+        onClose={closeBulkModal}
+        title="Assigner à un groupe"
+        description={`${selectionCount} contact(s) seront ajoutés au groupe choisi, sans affecter leurs autres tags.`}
+      >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            {selectionCount} contact(s) seront ajoutés au groupe choisi, sans affecter leurs autres tags.
-          </p>
-
-          <div className="flex gap-2">
-            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-              <input
-                type="radio"
-                checked={bulkTagMode === "existing"}
-                onChange={() => setBulkTagMode("existing")}
-              />
-              Groupe existant
-            </label>
-            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-              <input type="radio" checked={bulkTagMode === "new"} onChange={() => setBulkTagMode("new")} />
-              Nouveau groupe
-            </label>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Type de groupe">
+            {(
+              [
+                { value: "existing", label: "Groupe existant" },
+                { value: "new", label: "Nouveau groupe" },
+              ] as const
+            ).map((option) => (
+              <label
+                key={option.value}
+                className={clsx(
+                  "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition",
+                  bulkTagMode === option.value
+                    ? "border-brand-500 bg-brand-50 text-brand-800 dark:border-brand-500/60 dark:bg-brand-500/10 dark:text-brand-200"
+                    : "border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/40"
+                )}
+              >
+                <input
+                  type="radio"
+                  name="bulkTagMode"
+                  checked={bulkTagMode === option.value}
+                  onChange={() => setBulkTagMode(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
           </div>
 
           {bulkTagMode === "existing" ? (
-            <select className="input" value={bulkTagId} onChange={(e) => setBulkTagId(e.target.value)}>
+            <select
+              className="input"
+              aria-label="Groupe existant"
+              value={bulkTagId}
+              onChange={(e) => setBulkTagId(e.target.value)}
+            >
               <option value="">— Choisir un groupe —</option>
               {tags?.map((tag) => (
                 <option key={tag.id} value={tag.id}>
@@ -837,24 +1037,26 @@ export default function ContactsListPage() {
           ) : (
             <input
               className="input"
+              aria-label="Nom du nouveau groupe"
               placeholder="Nom du nouveau groupe"
+              autoFocus
               value={bulkNewTagName}
               onChange={(e) => setBulkNewTagName(e.target.value)}
             />
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={closeBulkModal}>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={closeBulkModal}>
               Annuler
             </Button>
             <Button
-              disabled={
-                bulkTagMutation.isPending ||
-                (bulkTagMode === "existing" ? !bulkTagId : !bulkNewTagName.trim())
-              }
+              type="button"
+              className="w-full sm:w-auto"
+              loading={bulkTagMutation.isPending}
+              disabled={bulkTagMode === "existing" ? !bulkTagId : !bulkNewTagName.trim()}
               onClick={() => bulkTagMutation.mutate()}
             >
-              {bulkTagMutation.isPending ? "Assignation..." : "Assigner"}
+              Assigner
             </Button>
           </div>
         </div>

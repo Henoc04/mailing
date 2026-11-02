@@ -4,6 +4,8 @@ import * as campaignsApi from "../../api/campaigns.api";
 import type { RecipientLogItem, RecipientStatus } from "../../api/campaigns.api";
 import { Badge, type BadgeColor } from "../ui/Badge";
 import { Button } from "../ui/Button";
+import { Icon } from "../ui/Icon";
+import { LoadingState } from "../ui/States";
 import { Table, type TableColumn } from "../ui/Table";
 
 const PAGE_SIZE = 25;
@@ -29,41 +31,79 @@ function formatDateTime(value: string | null): string {
   return new Date(value).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 }
 
+function ErrorDetail({ r }: { r: RecipientLogItem }) {
+  if (!r.errorMessage) {
+    return <span className="text-gray-400 dark:text-gray-500">—</span>;
+  }
+  return (
+    <span className="break-words text-xs text-red-600 dark:text-red-400" title={r.errorMessage}>
+      {r.errorMessage.length > 80 ? `${r.errorMessage.slice(0, 80)}…` : r.errorMessage}
+      {r.attempts > 1 ? ` (${r.attempts} tentatives)` : ""}
+    </span>
+  );
+}
+
 const COLUMNS: TableColumn<RecipientLogItem>[] = [
   {
     key: "recipient",
     header: "Destinataire",
     render: (r) => (
-      <div>
-        <p className="font-medium text-gray-900 dark:text-gray-100">{r.name || r.email}</p>
-        {r.name && <p className="text-xs text-gray-500 dark:text-gray-400">{r.email}</p>}
+      <div className="min-w-0 max-w-[16rem] sm:max-w-xs">
+        <p className="truncate font-medium text-gray-900 dark:text-gray-100" title={r.name || r.email}>
+          {r.name || r.email}
+        </p>
+        {r.name && (
+          <p className="truncate text-xs text-gray-500 dark:text-gray-400" title={r.email}>
+            {r.email}
+          </p>
+        )}
+        {/* Columns hidden on small screens are repeated here. */}
+        <div className="mt-1 space-y-0.5 text-xs text-gray-500 dark:text-gray-400 md:hidden">
+          {r.sentAt && <p>Envoyé le {formatDateTime(r.sentAt)}</p>}
+          {r.openedAt && <p title={`${r.openCount} ouverture(s)`}>Ouvert le {formatDateTime(r.openedAt)}</p>}
+        </div>
+        {r.errorMessage && (
+          <div className="mt-1 whitespace-normal lg:hidden">
+            <ErrorDetail r={r} />
+          </div>
+        )}
       </div>
     ),
   },
-  { key: "status", header: "Statut", render: (r) => <Badge color={STATUS_COLORS[r.status]}>{STATUS_LABELS[r.status]}</Badge> },
-  { key: "sentAt", header: "Envoyé le", render: (r) => formatDateTime(r.sentAt) },
+  {
+    key: "status",
+    header: "Statut",
+    render: (r) => (
+      <Badge dot color={STATUS_COLORS[r.status]}>
+        {STATUS_LABELS[r.status]}
+      </Badge>
+    ),
+  },
+  {
+    key: "sentAt",
+    header: "Envoyé le",
+    hideBelow: "md",
+    className: "whitespace-nowrap",
+    render: (r) => formatDateTime(r.sentAt),
+  },
   {
     key: "opened",
     header: "Ouvert",
+    hideBelow: "md",
+    className: "whitespace-nowrap",
     render: (r) =>
       r.openedAt ? (
         <span title={`${r.openCount} ouverture(s)`}>{formatDateTime(r.openedAt)}</span>
       ) : (
-        <span className="text-gray-400">—</span>
+        <span className="text-gray-400 dark:text-gray-500">—</span>
       ),
   },
   {
     key: "error",
     header: "Détail",
-    render: (r) =>
-      r.errorMessage ? (
-        <span className="text-xs text-red-600 dark:text-red-400" title={r.errorMessage}>
-          {r.errorMessage.length > 80 ? `${r.errorMessage.slice(0, 80)}…` : r.errorMessage}
-          {r.attempts > 1 ? ` (${r.attempts} tentatives)` : ""}
-        </span>
-      ) : (
-        <span className="text-gray-400">—</span>
-      ),
+    hideBelow: "lg",
+    className: "max-w-xs",
+    render: (r) => <ErrorDetail r={r} />,
   },
 ];
 
@@ -96,18 +136,27 @@ export function RecipientsLog({ campaignId }: Readonly<{ campaignId: string }>) 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
   return (
-    <div className="card space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Détail par destinataire</h2>
-        <div className="flex flex-wrap gap-2">
-          <input
-            className="input w-56"
-            placeholder="Rechercher (nom, email)"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
+    <section className="space-y-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <h2 className="section-title">Détail par destinataire</h2>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative sm:w-64">
+            <Icon
+              name="search"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="search"
+              className="input pl-9"
+              placeholder="Rechercher (nom, email)"
+              aria-label="Rechercher un destinataire"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
           <select
-            className="input w-40"
+            className="input sm:w-44"
+            aria-label="Filtrer par statut"
             value={status}
             onChange={(e) => {
               setStatus(e.target.value as RecipientStatus | "");
@@ -125,26 +174,44 @@ export function RecipientsLog({ campaignId }: Readonly<{ campaignId: string }>) 
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Chargement...</p>
+        <div className="card">
+          <LoadingState />
+        </div>
       ) : (
         <Table columns={COLUMNS} rows={data?.items ?? []} rowKey={(r) => r.id} emptyMessage="Aucun destinataire." />
       )}
 
       {data && data.total > PAGE_SIZE && (
-        <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-          <span>
+        <div className="flex flex-col gap-3 text-sm text-gray-500 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+          <span className="tabular-nums">
             {data.total.toLocaleString("fr-FR")} destinataire(s) — page {page}/{totalPages}
           </span>
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="flex-1 sm:flex-none"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              <Icon name="chevronLeft" className="h-3.5 w-3.5" />
               Précédent
             </Button>
-            <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="flex-1 sm:flex-none"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
               Suivant
+              <Icon name="chevronRight" className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

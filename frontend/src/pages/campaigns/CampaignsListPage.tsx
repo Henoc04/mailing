@@ -6,7 +6,11 @@ import * as campaignsApi from "../../api/campaigns.api";
 import type { ApiErrorBody, Campaign, CampaignStatus } from "../../api/types";
 import { Badge, type BadgeColor } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { Icon } from "../../components/ui/Icon";
 import { Modal } from "../../components/ui/Modal";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { ErrorState, LoadingState } from "../../components/ui/States";
 import { Table, type TableColumn } from "../../components/ui/Table";
 import { useToast } from "../../components/ui/ToastProvider";
 
@@ -33,6 +37,10 @@ const STATUS_COLORS: Record<CampaignStatus, BadgeColor> = {
   FAILED: "red",
 };
 
+const PRIMARY_LINK_CLASS = "btn h-10 bg-brand-600 px-4 text-sm text-white shadow-sm hover:bg-brand-500";
+const ROW_LINK_CLASS =
+  "btn h-8 px-3 text-xs text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10";
+
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (isAxiosError<ApiErrorBody>(error) && error.response?.data?.message) {
     return error.response.data.message;
@@ -44,16 +52,25 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 }
 
-function ProgressCell({ campaign }: { campaign: Campaign }) {
+function ProgressCell({ campaign, compact = false }: { campaign: Campaign; compact?: boolean }) {
   const done = campaign.sentCount + campaign.failedCount;
   const pct = campaign.totalRecipients > 0 ? Math.round((done / campaign.totalRecipients) * 100) : 0;
 
   return (
     <div className="flex items-center gap-2">
-      <div className="h-2 w-32 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-        <div className="h-full rounded-full bg-brand-500" style={{ width: `${pct}%` }} />
+      <div
+        className={
+          compact
+            ? "h-1.5 w-full max-w-[10rem] overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+            : "h-1.5 w-32 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+        }
+      >
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-brand-500 to-violet-500 transition-all"
+          style={{ width: `${pct}%` }}
+        />
       </div>
-      <span className="text-xs text-gray-500 dark:text-gray-400">
+      <span className="whitespace-nowrap text-xs tabular-nums text-gray-500 dark:text-gray-400">
         {done}/{campaign.totalRecipients}
       </span>
     </div>
@@ -107,22 +124,40 @@ export default function CampaignsListPage() {
     {
       key: "name",
       header: "Nom",
-      render: (campaign) => <span className="font-medium text-gray-900 dark:text-gray-100">{campaign.name}</span>,
+      className: "min-w-[10rem]",
+      render: (campaign) => (
+        <div className="min-w-0 space-y-1.5">
+          <p className="break-words font-medium text-gray-900 dark:text-gray-100">{campaign.name}</p>
+          {/* Secondary columns are hidden on small screens: repeat their info here. */}
+          <div className="sm:hidden">
+            <ProgressCell campaign={campaign} compact />
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 md:hidden">Créée le {formatDate(campaign.createdAt)}</p>
+        </div>
+      ),
     },
     {
       key: "status",
       header: "Statut",
-      render: (campaign) => <Badge color={STATUS_COLORS[campaign.status]}>{STATUS_LABELS[campaign.status]}</Badge>,
+      render: (campaign) => (
+        <Badge dot color={STATUS_COLORS[campaign.status]}>
+          {STATUS_LABELS[campaign.status]}
+        </Badge>
+      ),
     },
     {
       key: "progress",
       header: "Progression",
+      hideBelow: "sm",
       render: (campaign) => <ProgressCell campaign={campaign} />,
     },
     {
       key: "createdAt",
       header: "Créée le",
-      render: (campaign) => <span className="text-gray-500 dark:text-gray-400">{formatDate(campaign.createdAt)}</span>,
+      hideBelow: "md",
+      render: (campaign) => (
+        <span className="whitespace-nowrap text-gray-500 dark:text-gray-400">{formatDate(campaign.createdAt)}</span>
+      ),
     },
     {
       key: "actions",
@@ -133,32 +168,30 @@ export default function CampaignsListPage() {
         const isSending = campaign.status === "SENDING";
 
         return (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-[9rem] flex-wrap items-center gap-1.5">
             {canEditOrStart && (
               <>
-                <Link
-                  to={`/campaigns/${campaign.id}/edit`}
-                  className="rounded-md px-2.5 py-1.5 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-900/30"
-                >
-                  Modifier
-                </Link>
-                <Button size="sm" onClick={() => setStartingCampaign(campaign)}>
+                <Button type="button" size="sm" onClick={() => setStartingCampaign(campaign)}>
+                  <Icon name="send" className="h-3.5 w-3.5" />
                   Démarrer
                 </Button>
+                <Link to={`/campaigns/${campaign.id}/edit`} className={ROW_LINK_CLASS}>
+                  Modifier
+                </Link>
               </>
             )}
             {isLive && (
-              <Link
-                to={`/campaigns/${campaign.id}/progress`}
-                className="rounded-md px-2.5 py-1.5 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-900/30"
-              >
+              <Link to={`/campaigns/${campaign.id}/progress`} className={ROW_LINK_CLASS}>
+                <Icon name="chart" className="h-3.5 w-3.5" />
                 Voir la progression
               </Link>
             )}
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               disabled={duplicateMutation.isPending}
+              loading={duplicateMutation.isPending && duplicateMutation.variables === campaign.id}
               onClick={() => duplicateMutation.mutate(campaign.id)}
             >
               Dupliquer
@@ -166,12 +199,19 @@ export default function CampaignsListPage() {
             {isSending ? (
               <span
                 title="Impossible de supprimer une campagne en cours d'envoi"
-                className="cursor-not-allowed text-xs text-gray-400 dark:text-gray-600"
+                className="inline-flex h-8 cursor-not-allowed items-center px-3 text-xs text-gray-400 dark:text-gray-600"
               >
                 Supprimer
               </span>
             ) : (
-              <Button variant="danger" size="sm" onClick={() => setDeletingCampaign(campaign)}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                onClick={() => setDeletingCampaign(campaign)}
+              >
+                <Icon name="trash" className="h-3.5 w-3.5" />
                 Supprimer
               </Button>
             )}
@@ -183,17 +223,35 @@ export default function CampaignsListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Campagnes</h1>
-        <Link to="/campaigns/new">
-          <Button>Nouvelle campagne</Button>
-        </Link>
-      </div>
+      <PageHeader
+        title="Campagnes"
+        description="Créez, lancez et suivez vos campagnes d'emailing."
+        actions={
+          <Link to="/campaigns/new" className={PRIMARY_LINK_CLASS}>
+            <Icon name="plus" className="h-4 w-4" />
+            Nouvelle campagne
+          </Link>
+        }
+      />
 
       {isLoading ? (
-        <p className="text-gray-500 dark:text-gray-400">Chargement...</p>
+        <LoadingState />
       ) : isError ? (
-        <p className="text-red-600 dark:text-red-400">Impossible de charger les campagnes.</p>
+        <ErrorState>Impossible de charger les campagnes.</ErrorState>
+      ) : (campaigns ?? []).length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <EmptyState
+            icon="send"
+            title="Aucune campagne pour le moment."
+            description="Créez votre première campagne pour commencer à envoyer."
+            action={
+              <Link to="/campaigns/new" className={PRIMARY_LINK_CLASS}>
+                <Icon name="plus" className="h-4 w-4" />
+                Nouvelle campagne
+              </Link>
+            }
+          />
+        </div>
       ) : (
         <Table
           columns={columns}
@@ -207,20 +265,24 @@ export default function CampaignsListPage() {
         isOpen={startingCampaign !== null}
         onClose={() => setStartingCampaign(null)}
         title="Démarrer la campagne"
+        size="sm"
       >
         <p className="text-sm text-gray-700 dark:text-gray-300">
           Voulez-vous vraiment démarrer l'envoi de « {startingCampaign?.name} » ? Les destinataires seront
           résolus (si nécessaire) et l'envoi commencera immédiatement.
         </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setStartingCampaign(null)}>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={() => setStartingCampaign(null)}>
             Annuler
           </Button>
           <Button
-            disabled={startMutation.isPending}
+            type="button"
+            className="w-full sm:w-auto"
+            loading={startMutation.isPending}
             onClick={() => startingCampaign && startMutation.mutate(startingCampaign.id)}
           >
-            {startMutation.isPending ? "Démarrage..." : "Démarrer"}
+            {!startMutation.isPending && <Icon name="send" className="h-4 w-4" />}
+            Démarrer
           </Button>
         </div>
       </Modal>
@@ -229,21 +291,24 @@ export default function CampaignsListPage() {
         isOpen={deletingCampaign !== null}
         onClose={() => setDeletingCampaign(null)}
         title="Supprimer la campagne"
+        size="sm"
       >
         <p className="text-sm text-gray-700 dark:text-gray-300">
           Voulez-vous vraiment supprimer la campagne « {deletingCampaign?.name} » ? Cette action est
           irréversible.
         </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setDeletingCampaign(null)}>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={() => setDeletingCampaign(null)}>
             Annuler
           </Button>
           <Button
+            type="button"
             variant="danger"
-            disabled={removeMutation.isPending}
+            className="w-full sm:w-auto"
+            loading={removeMutation.isPending}
             onClick={() => deletingCampaign && removeMutation.mutate(deletingCampaign.id)}
           >
-            {removeMutation.isPending ? "Suppression..." : "Supprimer"}
+            Supprimer
           </Button>
         </div>
       </Modal>

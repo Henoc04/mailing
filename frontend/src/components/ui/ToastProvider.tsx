@@ -39,7 +39,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ showToast }}>
       {children}
       {createPortal(
-        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        <div className="pointer-events-none fixed inset-x-4 top-4 z-[60] flex flex-col items-center gap-2 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:top-auto sm:items-end">
           {toasts.map((toast) => (
             <Toast key={toast.id} toast={toast} onDismiss={dismissToast} />
           ))}

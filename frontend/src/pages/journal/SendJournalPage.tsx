@@ -1,9 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import clsx from "clsx";
 import * as campaignsApi from "../../api/campaigns.api";
 import type { Campaign, CampaignStatus } from "../../api/types";
 import { Badge, type BadgeColor } from "../../components/ui/Badge";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { Icon } from "../../components/ui/Icon";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { ErrorState, LoadingState } from "../../components/ui/States";
 import { CLICK_TRACKING_ENABLED } from "../../config/features";
 
 type SortKey = "name" | "status" | "sentCount" | "failedCount" | "openedCount" | "clickedCount" | "startedAt" | "completedAt";
@@ -28,6 +33,11 @@ const STATUS_LABELS: Record<CampaignStatus, string> = {
   CANCELLED: "Annulée",
   FAILED: "Échouée",
 };
+
+// Secondary columns collapse on small screens; their values are repeated
+// under the campaign name instead (see the first cell).
+const COUNT_COL = "hidden md:table-cell";
+const DATE_COL = "hidden lg:table-cell";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "—";
@@ -66,19 +76,38 @@ interface SortHeaderProps {
   currentKey: SortKey;
   direction: SortDirection;
   onSort: (key: SortKey) => void;
+  className?: string;
 }
 
-function SortHeader({ label, sortKey, currentKey, direction, onSort }: SortHeaderProps) {
+function SortHeader({ label, sortKey, currentKey, direction, onSort, className }: SortHeaderProps) {
   const isActive = currentKey === sortKey;
   return (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey)}
-      className="flex items-center gap-1 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+    <th
+      scope="col"
+      aria-sort={isActive ? (direction === "asc" ? "ascending" : "descending") : "none"}
+      className={clsx("whitespace-nowrap px-4 py-3 text-left", className)}
     >
-      {label}
-      <span className="inline-block w-3 text-[10px]">{isActive ? (direction === "asc" ? "▲" : "▼") : ""}</span>
-    </button>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={clsx(
+          "group inline-flex items-center gap-1 rounded text-left text-xs font-semibold uppercase tracking-wider transition-colors",
+          isActive
+            ? "text-gray-900 dark:text-gray-100"
+            : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        )}
+      >
+        {label}
+        <Icon
+          name="chevronDown"
+          className={clsx(
+            "h-3.5 w-3.5 transition",
+            isActive ? "opacity-100" : "opacity-0 group-hover:opacity-40",
+            isActive && direction === "asc" && "rotate-180"
+          )}
+        />
+      </button>
+    </th>
   );
 }
 
@@ -116,110 +145,134 @@ export default function SendJournalPage() {
     return sorted;
   }, [campaigns, search, sortKey, sortDirection]);
 
+  const sortProps = { currentKey: sortKey, direction: sortDirection, onSort: handleSort };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Journal d'envoi</h1>
-        <p className="mt-2 max-w-3xl text-xs text-gray-500 dark:text-gray-400">
-          Suivi agrégé par campagne. Pour le détail par destinataire, consultez « Voir le détail » sur une
-          campagne.
-        </p>
-      </div>
+      <PageHeader
+        title="Journal d'envoi"
+        description={
+          <span className="block max-w-3xl">
+            Suivi agrégé par campagne. Pour le détail par destinataire, consultez « Voir le détail » sur une
+            campagne.
+          </span>
+        }
+      />
 
-      <div className="flex items-center gap-3">
-        <input
-          type="text"
-          className="input max-w-sm"
-          placeholder="Rechercher une campagne..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="relative w-full sm:max-w-sm">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            type="search"
+            className="input pl-9"
+            placeholder="Rechercher une campagne…"
+            aria-label="Rechercher une campagne"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
       </div>
 
       {isLoading ? (
-        <p className="text-gray-500 dark:text-gray-400">Chargement...</p>
+        <LoadingState />
       ) : isError ? (
-        <p className="text-red-600 dark:text-red-400">Impossible de charger le journal d'envoi.</p>
+        <ErrorState>Impossible de charger le journal d'envoi.</ErrorState>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-800">
-              <tr>
-                <th scope="col" className="px-4 py-3">
-                  <SortHeader label="Nom de la campagne" sortKey="name" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                </th>
-                <th scope="col" className="px-4 py-3">
-                  <SortHeader label="Statut" sortKey="status" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                </th>
-                <th scope="col" className="px-4 py-3">
-                  <SortHeader label="Envoyés" sortKey="sentCount" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                </th>
-                <th scope="col" className="px-4 py-3">
-                  <SortHeader label="Échecs" sortKey="failedCount" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                </th>
-                <th scope="col" className="px-4 py-3">
-                  <SortHeader label="Ouvertures" sortKey="openedCount" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                </th>
-                {CLICK_TRACKING_ENABLED && (
-                  <th scope="col" className="px-4 py-3">
-                    <SortHeader label="Clics" sortKey="clickedCount" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                  </th>
-                )}
-                <th scope="col" className="px-4 py-3">
-                  <SortHeader label="Démarré le" sortKey="startedAt" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                </th>
-                <th scope="col" className="px-4 py-3">
-                  <SortHeader label="Terminé le" sortKey="completedAt" currentKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                </th>
-                <th
-                  scope="col"
-                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
-                >
-                  Action
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-900">
-              {filteredAndSorted.length === 0 ? (
+        <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white shadow-soft dark:border-gray-800 dark:bg-gray-900">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+              <thead className="bg-gray-50/80 dark:bg-gray-800/40">
                 <tr>
-                  <td colSpan={CLICK_TRACKING_ENABLED ? 9 : 8} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                    Aucune campagne ne correspond à votre recherche.
-                  </td>
+                  <SortHeader label="Nom de la campagne" sortKey="name" {...sortProps} />
+                  <SortHeader label="Statut" sortKey="status" {...sortProps} />
+                  <SortHeader label="Envoyés" sortKey="sentCount" className={COUNT_COL} {...sortProps} />
+                  <SortHeader label="Échecs" sortKey="failedCount" className={COUNT_COL} {...sortProps} />
+                  <SortHeader label="Ouvertures" sortKey="openedCount" className={COUNT_COL} {...sortProps} />
+                  {CLICK_TRACKING_ENABLED && (
+                    <SortHeader label="Clics" sortKey="clickedCount" className={COUNT_COL} {...sortProps} />
+                  )}
+                  <SortHeader label="Démarré le" sortKey="startedAt" className={DATE_COL} {...sortProps} />
+                  <SortHeader label="Terminé le" sortKey="completedAt" className={DATE_COL} {...sortProps} />
+                  <th
+                    scope="col"
+                    className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"
+                  >
+                    <span className="sr-only sm:not-sr-only">Action</span>
+                  </th>
                 </tr>
-              ) : (
-                filteredAndSorted.map((campaign) => (
-                  <tr key={campaign.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {campaign.name}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <Badge color={STATUS_COLORS[campaign.status]}>{STATUS_LABELS[campaign.status]}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{campaign.sentCount}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{campaign.failedCount}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{campaign.openedCount}</td>
-                    {CLICK_TRACKING_ENABLED && (
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{campaign.clickedCount}</td>
-                    )}
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                      {formatDateTime(campaign.startedAt)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                      {formatDateTime(campaign.completedAt)}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <Link
-                        to={`/campaigns/${campaign.id}/progress`}
-                        className="font-medium text-brand-600 hover:underline dark:text-brand-400"
-                      >
-                        Voir le détail
-                      </Link>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {filteredAndSorted.length === 0 ? (
+                  <tr>
+                    <td colSpan={CLICK_TRACKING_ENABLED ? 9 : 8}>
+                      <EmptyState
+                        icon="search"
+                        title="Aucune campagne ne correspond à votre recherche."
+                      />
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredAndSorted.map((campaign) => (
+                    <tr key={campaign.id} className="transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
+                      <td className="px-4 py-3.5 text-sm">
+                        <p className="min-w-[8rem] break-words font-medium text-gray-900 dark:text-gray-100">
+                          {campaign.name}
+                        </p>
+                        {/* Compact recap of the columns hidden on small screens. */}
+                        <p className="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400 md:hidden">
+                          {campaign.sentCount} envoyés · {campaign.failedCount} échecs · {campaign.openedCount} ouvertures
+                          {CLICK_TRACKING_ENABLED && ` · ${campaign.clickedCount} clics`}
+                        </p>
+                        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 lg:hidden">
+                          {formatDateTime(campaign.startedAt)} → {formatDateTime(campaign.completedAt)}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3.5 text-sm">
+                        <Badge dot color={STATUS_COLORS[campaign.status]}>
+                          {STATUS_LABELS[campaign.status]}
+                        </Badge>
+                      </td>
+                      <td className={clsx(COUNT_COL, "px-4 py-3.5 text-sm tabular-nums text-gray-700 dark:text-gray-300")}>
+                        {campaign.sentCount}
+                      </td>
+                      <td className={clsx(COUNT_COL, "px-4 py-3.5 text-sm tabular-nums text-gray-700 dark:text-gray-300")}>
+                        {campaign.failedCount}
+                      </td>
+                      <td className={clsx(COUNT_COL, "px-4 py-3.5 text-sm tabular-nums text-gray-700 dark:text-gray-300")}>
+                        {campaign.openedCount}
+                      </td>
+                      {CLICK_TRACKING_ENABLED && (
+                        <td
+                          className={clsx(COUNT_COL, "px-4 py-3.5 text-sm tabular-nums text-gray-700 dark:text-gray-300")}
+                        >
+                          {campaign.clickedCount}
+                        </td>
+                      )}
+                      <td className={clsx(DATE_COL, "whitespace-nowrap px-4 py-3.5 text-sm text-gray-700 dark:text-gray-300")}>
+                        {formatDateTime(campaign.startedAt)}
+                      </td>
+                      <td className={clsx(DATE_COL, "whitespace-nowrap px-4 py-3.5 text-sm text-gray-700 dark:text-gray-300")}>
+                        {formatDateTime(campaign.completedAt)}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm">
+                        <Link
+                          to={`/campaigns/${campaign.id}/progress`}
+                          className="link inline-flex items-center gap-1 whitespace-nowrap"
+                          aria-label={`Voir le détail de « ${campaign.name} »`}
+                        >
+                          <span className="hidden sm:inline">Voir le détail</span>
+                          <Icon name="chevronRight" className="h-4 w-4" />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

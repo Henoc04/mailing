@@ -6,7 +6,10 @@ import type { SmtpAccount, SmtpSecurity } from "../../api/types";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
-import { Table, type TableColumn } from "../../components/ui/Table";
+import { Icon } from "../../components/ui/Icon";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { ErrorState, LoadingState } from "../../components/ui/States";
 import { useToast } from "../../components/ui/ToastProvider";
 
 const SECURITY_OPTIONS: SmtpSecurity[] = ["NONE", "SSL", "STARTTLS"];
@@ -61,6 +64,15 @@ function formatDate(value: string | null): string {
     dateStyle: "short",
     timeStyle: "short",
   });
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{message}</p>;
+}
+
+function inputClass(hasError: boolean): string {
+  return hasError ? "input border-red-400 focus:border-red-500 focus:ring-red-500/15 dark:border-red-500/60" : "input";
 }
 
 export default function SmtpAccountsPage() {
@@ -205,277 +217,345 @@ export default function SmtpAccountsPage() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
-  const columns: TableColumn<SmtpAccount>[] = [
-    {
-      key: "label",
-      header: "Libellé",
-      render: (account) => (
-        <div>
-          <p className="font-medium text-gray-900 dark:text-gray-100">{account.label}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">{account.fromEmail}</p>
+  function renderAccountCard(account: SmtpAccount) {
+    const isTesting = testingId === account.id;
+
+    return (
+      <article key={account.id} className="card flex min-w-0 flex-col gap-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+            <Icon name="server" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate font-semibold text-gray-900 dark:text-gray-100" title={account.label}>
+              {account.label}
+            </h3>
+            <p className="truncate text-sm text-gray-500 dark:text-gray-400" title={account.fromEmail}>
+              {account.fromEmail}
+            </p>
+          </div>
+          <Badge dot color={account.isActive ? "green" : "gray"} className="shrink-0">
+            {account.isActive ? "Actif" : "Inactif"}
+          </Badge>
         </div>
-      ),
-    },
-    {
-      key: "hostPort",
-      header: "Hôte",
-      render: (account) => (
-        <span>
-          {account.host}:{account.port}
-        </span>
-      ),
-    },
-    {
-      key: "security",
-      header: "Sécurité",
-      render: (account) => <Badge color="blue">{account.security}</Badge>,
-    },
-    {
-      key: "isActive",
-      header: "Statut",
-      render: (account) => (
-        <Badge color={account.isActive ? "green" : "gray"}>{account.isActive ? "Actif" : "Inactif"}</Badge>
-      ),
-    },
-    {
-      key: "lastTest",
-      header: "Dernier test",
-      render: (account) => (
-        <div className="flex flex-col gap-1">
-          {account.lastTestOk === null ? (
-            <Badge color="gray">Non testé</Badge>
-          ) : account.lastTestOk ? (
-            <Badge color="green">OK</Badge>
-          ) : (
-            <Badge color="red" className="max-w-[220px]">
-              {account.lastTestError ?? "Échec"}
-            </Badge>
+
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm min-[420px]:grid-cols-2">
+          <div className="min-w-0">
+            <dt className="text-xs text-gray-500 dark:text-gray-400">Hôte</dt>
+            <dd className="mt-0.5 break-all font-mono text-[13px] text-gray-800 dark:text-gray-200">
+              {account.host}:{account.port}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-xs text-gray-500 dark:text-gray-400">Sécurité</dt>
+            <dd className="mt-0.5">
+              <Badge color="blue">{account.security}</Badge>
+            </dd>
+          </div>
+          {account.rotationGroup && (
+            <div className="min-w-0">
+              <dt className="text-xs text-gray-500 dark:text-gray-400">Groupe de rotation</dt>
+              <dd className="mt-0.5 truncate text-gray-800 dark:text-gray-200">{account.rotationGroup}</dd>
+            </div>
           )}
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {formatDate(account.lastTestedAt)}
-          </span>
+          {account.dailyQuota != null && (
+            <div className="min-w-0">
+              <dt className="text-xs text-gray-500 dark:text-gray-400">Quota quotidien</dt>
+              <dd className="mt-0.5 tabular-nums text-gray-800 dark:text-gray-200">
+                {account.dailyQuota.toLocaleString("fr-FR")}
+              </dd>
+            </div>
+          )}
+        </dl>
+
+        <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-800/40">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Dernier test</span>
+            <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">
+              {formatDate(account.lastTestedAt)}
+            </span>
+          </div>
+          <div className="mt-2">
+            {account.lastTestOk === null ? (
+              <Badge dot color="gray">
+                Non testé
+              </Badge>
+            ) : account.lastTestOk ? (
+              <Badge dot color="green">
+                OK
+              </Badge>
+            ) : (
+              <div className="space-y-1.5">
+                <Badge dot color="red">
+                  Échec
+                </Badge>
+                <p className="break-words text-xs text-red-700 dark:text-red-300">
+                  {account.lastTestError ?? "Échec"}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
-      ),
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      render: (account) => (
-        <div className="flex flex-wrap items-center gap-2">
+
+        <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
           <Button
+            type="button"
             variant="secondary"
             size="sm"
-            disabled={testingId === account.id}
+            className="flex-1 sm:flex-none"
+            loading={isTesting}
             onClick={() => testMutation.mutate(account.id)}
           >
-            {testingId === account.id ? "Test..." : "Tester la connexion"}
+            {!isTesting && <Icon name="bolt" className="h-4 w-4" />}
+            Tester la connexion
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => openEditForm(account)}>
+          <Button type="button" variant="ghost" size="sm" onClick={() => openEditForm(account)}>
             Modifier
           </Button>
-          <Button variant="danger" size="sm" onClick={() => setDeletingAccount(account)}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+            onClick={() => setDeletingAccount(account)}
+          >
+            <Icon name="trash" className="h-4 w-4" />
             Supprimer
           </Button>
         </div>
-      ),
-    },
-  ];
+      </article>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Comptes SMTP</h1>
-        <Button onClick={openCreateForm}>Ajouter un compte SMTP</Button>
-      </div>
+      <PageHeader
+        title="Comptes SMTP"
+        description="Les comptes d'envoi utilisés par vos campagnes."
+        actions={
+          <Button type="button" onClick={openCreateForm}>
+            <Icon name="plus" className="h-4 w-4" />
+            Ajouter un compte SMTP
+          </Button>
+        }
+      />
 
       {isLoading ? (
-        <p className="text-gray-500 dark:text-gray-400">Chargement...</p>
+        <LoadingState />
       ) : isError ? (
-        <p className="text-red-600 dark:text-red-400">Impossible de charger les comptes SMTP.</p>
+        <ErrorState>Impossible de charger les comptes SMTP.</ErrorState>
+      ) : (accounts ?? []).length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <EmptyState
+            icon="server"
+            title="Aucun compte SMTP configuré."
+            description="Ajoutez un compte d'envoi pour pouvoir lancer vos campagnes."
+            action={
+              <Button type="button" onClick={openCreateForm}>
+                <Icon name="plus" className="h-4 w-4" />
+                Ajouter un compte SMTP
+              </Button>
+            }
+          />
+        </div>
       ) : (
-        <Table
-          columns={columns}
-          rows={accounts ?? []}
-          rowKey={(row) => row.id}
-          emptyMessage="Aucun compte SMTP configuré."
-        />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+          {(accounts ?? []).map(renderAccountCard)}
+        </div>
       )}
 
       <Modal
         isOpen={isFormOpen}
         onClose={closeForm}
+        size="lg"
         title={editingAccount ? "Modifier le compte SMTP" : "Ajouter un compte SMTP"}
+        description="Paramètres de connexion fournis par votre hébergeur ou service d'emailing."
       >
-        <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
-          <div>
-            <label className="label" htmlFor="label">
-              Libellé
-            </label>
-            <input
-              id="label"
-              className="input"
-              value={form.label}
-              onChange={(e) => setForm({ ...form, label: e.target.value })}
-            />
-            {formErrors.label && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{formErrors.label}</p>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="host">
-                Hôte
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="label" htmlFor="label">
+                Libellé
               </label>
               <input
-                id="host"
-                className="input"
-                value={form.host}
-                onChange={(e) => setForm({ ...form, host: e.target.value })}
+                id="label"
+                className={inputClass(!!formErrors.label)}
+                autoFocus
+                placeholder="Ex : Serveur principal"
+                value={form.label}
+                onChange={(e) => setForm({ ...form, label: e.target.value })}
               />
-              {formErrors.host && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{formErrors.host}</p>}
-            </div>
-            <div>
-              <label className="label" htmlFor="port">
-                Port
-              </label>
-              <input
-                id="port"
-                className="input"
-                value={form.port}
-                onChange={(e) => setForm({ ...form, port: e.target.value })}
-              />
-              {formErrors.port && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{formErrors.port}</p>}
+              <FieldError message={formErrors.label} />
             </div>
           </div>
 
-          <div>
-            <label className="label" htmlFor="security">
-              Sécurité
-            </label>
-            <select
-              id="security"
-              className="input"
-              value={form.security}
-              onChange={(e) => setForm({ ...form, security: e.target.value as SmtpSecurity })}
-            >
-              {SECURITY_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
+          <fieldset className="space-y-4">
+            <legend className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Serveur
+            </legend>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_8rem]">
+              <div>
+                <label className="label" htmlFor="host">
+                  Hôte
+                </label>
+                <input
+                  id="host"
+                  className={inputClass(!!formErrors.host)}
+                  placeholder="smtp.exemple.com"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={form.host}
+                  onChange={(e) => setForm({ ...form, host: e.target.value })}
+                />
+                <FieldError message={formErrors.host} />
+              </div>
+              <div>
+                <label className="label" htmlFor="port">
+                  Port
+                </label>
+                <input
+                  id="port"
+                  inputMode="numeric"
+                  className={inputClass(!!formErrors.port)}
+                  value={form.port}
+                  onChange={(e) => setForm({ ...form, port: e.target.value })}
+                />
+                <FieldError message={formErrors.port} />
+              </div>
+            </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="username">
-                Nom d'utilisateur
-              </label>
-              <input
-                id="username"
-                className="input"
-                value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
-              />
-              {formErrors.username && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{formErrors.username}</p>
-              )}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="security">
+                  Sécurité
+                </label>
+                <select
+                  id="security"
+                  className="input"
+                  value={form.security}
+                  onChange={(e) => setForm({ ...form, security: e.target.value as SmtpSecurity })}
+                >
+                  {SECURITY_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="hidden sm:block" aria-hidden="true" />
+              <div>
+                <label className="label" htmlFor="username">
+                  Nom d'utilisateur
+                </label>
+                <input
+                  id="username"
+                  className={inputClass(!!formErrors.username)}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={form.username}
+                  onChange={(e) => setForm({ ...form, username: e.target.value })}
+                />
+                <FieldError message={formErrors.username} />
+              </div>
+              <div>
+                <label className="label" htmlFor="password">
+                  Mot de passe
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  autoComplete="new-password"
+                  className={inputClass(!!formErrors.password)}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                />
+                {editingAccount && <p className="hint">(laisser vide pour ne pas changer)</p>}
+                <FieldError message={formErrors.password} />
+              </div>
             </div>
-            <div>
-              <label className="label" htmlFor="password">
-                Mot de passe {editingAccount && "(laisser vide pour ne pas changer)"}
-              </label>
-              <input
-                id="password"
-                type="password"
-                className="input"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-              />
-              {formErrors.password && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{formErrors.password}</p>
-              )}
-            </div>
-          </div>
+          </fieldset>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="fromEmail">
-                Email d'expédition
-              </label>
-              <input
-                id="fromEmail"
-                type="email"
-                className="input"
-                value={form.fromEmail}
-                onChange={(e) => setForm({ ...form, fromEmail: e.target.value })}
-              />
-              {formErrors.fromEmail && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{formErrors.fromEmail}</p>
-              )}
+          <fieldset className="space-y-4 border-t border-gray-100 pt-5 dark:border-gray-800">
+            <legend className="sr-only">Expéditeur et envoi</legend>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Expéditeur et envoi
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="fromEmail">
+                  Email d'expédition
+                </label>
+                <input
+                  id="fromEmail"
+                  type="email"
+                  autoCapitalize="none"
+                  className={inputClass(!!formErrors.fromEmail)}
+                  value={form.fromEmail}
+                  onChange={(e) => setForm({ ...form, fromEmail: e.target.value })}
+                />
+                <FieldError message={formErrors.fromEmail} />
+              </div>
+              <div>
+                <label className="label" htmlFor="fromName">
+                  Nom d'expéditeur
+                </label>
+                <input
+                  id="fromName"
+                  className={inputClass(!!formErrors.fromName)}
+                  value={form.fromName}
+                  onChange={(e) => setForm({ ...form, fromName: e.target.value })}
+                />
+                <FieldError message={formErrors.fromName} />
+              </div>
+              <div>
+                <label className="label" htmlFor="rotationGroup">
+                  Groupe de rotation <span className="font-normal text-gray-400">(optionnel)</span>
+                </label>
+                <input
+                  id="rotationGroup"
+                  className="input"
+                  value={form.rotationGroup}
+                  onChange={(e) => setForm({ ...form, rotationGroup: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="dailyQuota">
+                  Quota quotidien <span className="font-normal text-gray-400">(optionnel)</span>
+                </label>
+                <input
+                  id="dailyQuota"
+                  inputMode="numeric"
+                  className={inputClass(!!formErrors.dailyQuota)}
+                  value={form.dailyQuota}
+                  onChange={(e) => setForm({ ...form, dailyQuota: e.target.value })}
+                />
+                <FieldError message={formErrors.dailyQuota} />
+              </div>
             </div>
-            <div>
-              <label className="label" htmlFor="fromName">
-                Nom d'expéditeur
-              </label>
-              <input
-                id="fromName"
-                className="input"
-                value={form.fromName}
-                onChange={(e) => setForm({ ...form, fromName: e.target.value })}
-              />
-              {formErrors.fromName && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{formErrors.fromName}</p>
-              )}
-            </div>
-          </div>
+          </fieldset>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="rotationGroup">
-                Groupe de rotation (optionnel)
-              </label>
-              <input
-                id="rotationGroup"
-                className="input"
-                value={form.rotationGroup}
-                onChange={(e) => setForm({ ...form, rotationGroup: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="dailyQuota">
-                Quota quotidien (optionnel)
-              </label>
-              <input
-                id="dailyQuota"
-                className="input"
-                value={form.dailyQuota}
-                onChange={(e) => setForm({ ...form, dailyQuota: e.target.value })}
-              />
-              {formErrors.dailyQuota && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{formErrors.dailyQuota}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
+          <label
+            htmlFor="isActive"
+            className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm text-gray-700 transition hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40"
+          >
             <input
               id="isActive"
               type="checkbox"
               checked={form.isActive}
               onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600"
+              className="rounded border-gray-300 dark:border-gray-600"
             />
-            <label className="text-sm text-gray-700 dark:text-gray-300" htmlFor="isActive">
-              Compte actif
-            </label>
-          </div>
+            Compte actif
+          </label>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={closeForm}>
+          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={closeForm}>
               Annuler
             </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Enregistrement..." : editingAccount ? "Mettre à jour" : "Créer"}
+            <Button type="submit" className="w-full sm:w-auto" loading={isSaving}>
+              {editingAccount ? "Mettre à jour" : "Créer"}
             </Button>
           </div>
         </form>
@@ -484,22 +564,30 @@ export default function SmtpAccountsPage() {
       <Modal
         isOpen={deletingAccount !== null}
         onClose={() => setDeletingAccount(null)}
+        size="sm"
         title="Supprimer le compte SMTP"
       >
-        <p className="text-sm text-gray-700 dark:text-gray-300">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
           Voulez-vous vraiment supprimer le compte « {deletingAccount?.label} » ? Cette action est
           irréversible.
         </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setDeletingAccount(null)}>
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full sm:w-auto"
+            onClick={() => setDeletingAccount(null)}
+          >
             Annuler
           </Button>
           <Button
+            type="button"
             variant="danger"
-            disabled={removeMutation.isPending}
+            className="w-full sm:w-auto"
+            loading={removeMutation.isPending}
             onClick={() => deletingAccount && removeMutation.mutate(deletingAccount.id)}
           >
-            {removeMutation.isPending ? "Suppression..." : "Supprimer"}
+            Supprimer
           </Button>
         </div>
       </Modal>

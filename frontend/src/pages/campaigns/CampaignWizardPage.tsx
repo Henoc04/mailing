@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import clsx from "clsx";
 import * as campaignsApi from "../../api/campaigns.api";
 import * as templatesApi from "../../api/templates.api";
 import * as segmentsApi from "../../api/segments.api";
@@ -8,6 +9,10 @@ import * as smtpAccountsApi from "../../api/smtpAccounts.api";
 import * as tagsApi from "../../api/tags.api";
 import type { CampaignTargetType, ContactWithTags } from "../../api/types";
 import { Button } from "../../components/ui/Button";
+import { Icon, type IconName } from "../../components/ui/Icon";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { Spinner } from "../../components/ui/Spinner";
+import { LoadingState } from "../../components/ui/States";
 import { useToast } from "../../components/ui/ToastProvider";
 import { ContactPicker } from "./wizard/ContactPicker";
 import { TestSendPanel } from "./wizard/TestSendPanel";
@@ -20,6 +25,18 @@ import {
   validateStep,
   type WizardFormState,
 } from "./wizard/wizardForm";
+
+// Shared look for the scrollable checkbox lists (segments, tags, SMTP accounts).
+const CHECK_LIST_CLASS =
+  "max-h-56 space-y-0.5 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1.5 dark:border-gray-800 dark:bg-gray-900";
+const CHECK_ROW_CLASS =
+  "flex cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50";
+
+const TARGET_OPTIONS: { value: CampaignTargetType; label: string; icon: IconName }[] = [
+  { value: "SINGLE", label: "Un seul contact", icon: "users" },
+  { value: "SEGMENTS", label: "Segments / Groupes", icon: "funnel" },
+  { value: "ALL", label: "Toute la base", icon: "inbox" },
+];
 
 export default function CampaignWizardPage() {
   const { id } = useParams<{ id: string }>();
@@ -239,24 +256,32 @@ export default function CampaignWizardPage() {
   function renderRecipientsPreview() {
     const preview = targetingPreviewQuery.data;
     return (
-      <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-          {targetingPreviewQuery.isFetching
-            ? "Calcul des destinataires..."
-            : `${preview?.totalCount ?? 0} destinataire(s) correspondant(s)`}
+      <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-800/30">
+        <p className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+          {targetingPreviewQuery.isFetching ? (
+            <>
+              <Spinner className="h-4 w-4 text-brand-500" />
+              Calcul des destinataires…
+            </>
+          ) : (
+            <>
+              <Icon name="users" className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+              {`${preview?.totalCount ?? 0} destinataire(s) correspondant(s)`}
+            </>
+          )}
         </p>
         {(preview?.contacts.length ?? 0) > 0 && (
-          <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm text-gray-600 dark:text-gray-300">
+          <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto text-sm text-gray-600 dark:text-gray-300">
             {preview!.contacts.map((c) => (
-              <li key={c.id}>
-                {c.prenom} {c.nom} — {c.email}
+              <li key={c.id} className="break-words">
+                {c.prenom} {c.nom} <span className="text-gray-400 dark:text-gray-500">—</span> {c.email}
               </li>
             ))}
           </ul>
         )}
         {preview && preview.totalCount > preview.contacts.length && (
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            et {preview.totalCount - preview.contacts.length} de plus...
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            et {preview.totalCount - preview.contacts.length} de plus…
           </p>
         )}
       </div>
@@ -317,43 +342,103 @@ export default function CampaignWizardPage() {
     startMutation.mutate(savedId);
   }
 
+  const header = (
+    <PageHeader
+      back={{ to: "/campaigns", label: "Campagnes" }}
+      title={isEditMode ? "Modifier la campagne" : "Nouvelle campagne"}
+      description="Configurez votre campagne en quelques étapes, puis lancez ou planifiez l'envoi."
+    />
+  );
+
   if (isEditMode && isLoadingCampaign) {
-    return <p className="text-gray-500 dark:text-gray-400">Chargement de la campagne...</p>;
+    return (
+      <div className="space-y-6">
+        {header}
+        <LoadingState label="Chargement de la campagne…" />
+      </div>
+    );
   }
+
+  const lastStep = STEP_LABELS.length - 1;
+
+  const autoSavingNotice = (
+    <p className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+      <Spinner className="h-4 w-4 text-brand-500" />
+      Enregistrement automatique de la campagne en cours…
+    </p>
+  );
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-        {isEditMode ? "Modifier la campagne" : "Nouvelle campagne"}
-      </h1>
+      {header}
 
       {/* Step indicator */}
-      <ol className="flex flex-wrap items-center gap-2 text-sm">
-        {STEP_LABELS.map((label, index) => (
-          <li key={label} className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setStep(index)}
-              className={`flex items-center gap-2 rounded-full px-3 py-1.5 font-medium transition-colors ${
-                index === step
-                  ? "bg-brand-600 text-white"
-                  : index < step
-                  ? "bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300"
-                  : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
-              }`}
-            >
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs">
-                {index + 1}
-              </span>
-              {label}
-            </button>
-            {index < STEP_LABELS.length - 1 && <span className="text-gray-300 dark:text-gray-600">—</span>}
-          </li>
-        ))}
-      </ol>
+      <nav aria-label="Étapes de la campagne" className="card py-3 sm:py-4">
+        <ol className="flex items-center">
+          {STEP_LABELS.map((label, index) => {
+            const isCurrent = index === step;
+            const isDone = index < step;
+            return (
+              <li key={label} className={clsx("flex items-center", index < lastStep && "flex-1")}>
+                <button
+                  type="button"
+                  onClick={() => setStep(index)}
+                  aria-current={isCurrent ? "step" : undefined}
+                  aria-label={`Étape ${index + 1} : ${label}`}
+                  title={label}
+                  className="group flex shrink-0 items-center gap-2 rounded-full"
+                >
+                  <span
+                    className={clsx(
+                      "flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all",
+                      isCurrent &&
+                        "bg-brand-600 text-white shadow-sm ring-4 ring-brand-500/20 dark:bg-brand-500 dark:ring-brand-400/20",
+                      isDone &&
+                        "bg-brand-50 text-brand-600 ring-1 ring-brand-200 group-hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-400 dark:ring-brand-500/30",
+                      !isCurrent &&
+                        !isDone &&
+                        "bg-white text-gray-500 ring-1 ring-gray-200 group-hover:ring-gray-300 dark:bg-gray-900 dark:text-gray-400 dark:ring-gray-700"
+                    )}
+                  >
+                    {isDone ? <Icon name="check" className="h-4 w-4" /> : index + 1}
+                  </span>
+                  <span
+                    className={clsx(
+                      "whitespace-nowrap text-sm font-medium",
+                      isCurrent ? "hidden text-gray-900 dark:text-white sm:inline" : "hidden xl:inline",
+                      isDone && "text-gray-700 dark:text-gray-300",
+                      !isCurrent && !isDone && "text-gray-500 dark:text-gray-400"
+                    )}
+                  >
+                    {label}
+                  </span>
+                </button>
+                {index < lastStep && (
+                  <span
+                    aria-hidden="true"
+                    className={clsx(
+                      "mx-1.5 h-0.5 min-w-[0.5rem] flex-1 rounded-full sm:mx-3",
+                      isDone ? "bg-brand-500 dark:bg-brand-400" : "bg-gray-200 dark:bg-gray-800"
+                    )}
+                  />
+                )}
+              </li>
+            );
+          })}
+        </ol>
+        {/* Phones only show circles in the row above: name the current step here. */}
+        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400 sm:hidden">
+          Étape {step + 1} sur {STEP_LABELS.length} ·{" "}
+          <span className="font-medium text-gray-900 dark:text-gray-100">{STEP_LABELS[step]}</span>
+        </p>
+      </nav>
 
       {stepErrors.length > 0 && (
-        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300">
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+        >
+          <Icon name="alert" className="mt-0.5 shrink-0" />
           <ul className="list-inside list-disc space-y-1">
             {stepErrors.map((error) => (
               <li key={error}>{error}</li>
@@ -363,9 +448,11 @@ export default function CampaignWizardPage() {
       )}
 
       <div className="card space-y-4">
+        <h2 className="section-title hidden sm:block">{STEP_LABELS[step]}</h2>
+
         {/* ---------------- Step 1 — Infos & modèle ---------------- */}
         {step === 0 && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div>
               <label className="label" htmlFor="name">
                 Nom de la campagne
@@ -379,74 +466,82 @@ export default function CampaignWizardPage() {
               />
             </div>
 
-            <div>
-              <label className="label" htmlFor="templateId">
-                Modèle
-              </label>
-              <select
-                id="templateId"
-                className="input"
-                value={form.templateId}
-                onChange={(e) => updateForm("templateId", e.target.value)}
-              >
-                <option value="">— Aucun modèle —</option>
-                {(templates ?? []).map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name} — {template.subject}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="min-w-0">
+                <label className="label" htmlFor="templateId">
+                  Modèle
+                </label>
+                <select
+                  id="templateId"
+                  className="input"
+                  value={form.templateId}
+                  onChange={(e) => updateForm("templateId", e.target.value)}
+                >
+                  <option value="">— Aucun modèle —</option>
+                  {(templates ?? []).map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} — {template.subject}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <div>
-              <label className="label" htmlFor="subjectOverride">
-                Sujet personnalisé (optionnel)
-              </label>
-              <input
-                id="subjectOverride"
-                className="input"
-                value={form.subjectOverride}
-                onChange={(e) => updateForm("subjectOverride", e.target.value)}
-                placeholder="Laisser vide pour utiliser le sujet du modèle"
-              />
-              {selectedTemplate && !form.subjectOverride && (
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Sujet actuel du modèle : « {selectedTemplate.subject} »
-                </p>
-              )}
+              <div className="min-w-0">
+                <label className="label" htmlFor="subjectOverride">
+                  Sujet personnalisé (optionnel)
+                </label>
+                <input
+                  id="subjectOverride"
+                  className="input"
+                  value={form.subjectOverride}
+                  onChange={(e) => updateForm("subjectOverride", e.target.value)}
+                  placeholder="Laisser vide pour utiliser le sujet du modèle"
+                />
+                {selectedTemplate && !form.subjectOverride && (
+                  <p className="hint break-words">Sujet actuel du modèle : « {selectedTemplate.subject} »</p>
+                )}
+              </div>
             </div>
           </div>
         )}
 
         {/* ---------------- Step 2 — Destinataires ---------------- */}
         {step === 1 && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {(
-                [
-                  { value: "SINGLE", label: "Un seul contact" },
-                  { value: "SEGMENTS", label: "Segments / Groupes" },
-                  { value: "ALL", label: "Toute la base" },
-                ] as { value: CampaignTargetType; label: string }[]
-              ).map((option) => (
-                <label
-                  key={option.value}
-                  className={`cursor-pointer rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                    form.targetType === option.value
-                      ? "border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-500 dark:bg-brand-900/30 dark:text-brand-300"
-                      : "border-gray-300 text-gray-600 dark:border-gray-700 dark:text-gray-300"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="targetType"
-                    className="sr-only"
-                    checked={form.targetType === option.value}
-                    onChange={() => updateForm("targetType", option.value)}
-                  />
-                  {option.label}
-                </label>
-              ))}
+          <div className="space-y-5">
+            <div role="radiogroup" aria-label="Type de ciblage" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {TARGET_OPTIONS.map((option) => {
+                const selected = form.targetType === option.value;
+                return (
+                  <label
+                    key={option.value}
+                    className={clsx(
+                      "flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition-all has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-500/60",
+                      selected
+                        ? "border-brand-500 bg-brand-50 text-brand-700 ring-1 ring-brand-500 dark:border-brand-500 dark:bg-brand-500/10 dark:text-brand-300"
+                        : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800/50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="targetType"
+                      className="sr-only"
+                      checked={selected}
+                      onChange={() => updateForm("targetType", option.value)}
+                    />
+                    <span
+                      className={clsx(
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                        selected
+                          ? "bg-brand-600 text-white dark:bg-brand-500"
+                          : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                      )}
+                    >
+                      <Icon name={option.icon} className="h-4 w-4" />
+                    </span>
+                    {option.label}
+                  </label>
+                );
+              })}
             </div>
 
             {form.targetType === "SINGLE" && (
@@ -457,67 +552,69 @@ export default function CampaignWizardPage() {
             )}
 
             {form.targetType === "SEGMENTS" && (
-              <div className="space-y-2">
-                <p className="label">Segments</p>
-                <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border border-gray-200 p-2 dark:border-gray-700">
-                  {(segments ?? []).length === 0 ? (
-                    <p className="p-2 text-sm text-gray-500 dark:text-gray-400">Aucun segment disponible.</p>
-                  ) : (
-                    (segments ?? []).map((segment) => {
-                      const checked = form.segmentIds.includes(segment.id);
-                      return (
-                        <label
-                          key={segment.id}
-                          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600"
-                            checked={checked}
-                            onChange={() =>
-                              updateForm(
-                                "segmentIds",
-                                checked
-                                  ? form.segmentIds.filter((sid) => sid !== segment.id)
-                                  : [...form.segmentIds, segment.id]
-                              )
-                            }
-                          />
-                          <span className="text-gray-700 dark:text-gray-200">{segment.name}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <p className="label">Segments</p>
+                    <div className={CHECK_LIST_CLASS}>
+                      {(segments ?? []).length === 0 ? (
+                        <p className="p-2 text-sm text-gray-500 dark:text-gray-400">Aucun segment disponible.</p>
+                      ) : (
+                        (segments ?? []).map((segment) => {
+                          const checked = form.segmentIds.includes(segment.id);
+                          return (
+                            <label key={segment.id} className={CHECK_ROW_CLASS}>
+                              <input
+                                type="checkbox"
+                                className="shrink-0"
+                                checked={checked}
+                                onChange={() =>
+                                  updateForm(
+                                    "segmentIds",
+                                    checked
+                                      ? form.segmentIds.filter((sid) => sid !== segment.id)
+                                      : [...form.segmentIds, segment.id]
+                                  )
+                                }
+                              />
+                              <span className="min-w-0 break-words text-gray-700 dark:text-gray-200">
+                                {segment.name}
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
 
-                <p className="label">Groupes (tags)</p>
-                <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border border-gray-200 p-2 dark:border-gray-700">
-                  {(tags ?? []).length === 0 ? (
-                    <p className="p-2 text-sm text-gray-500 dark:text-gray-400">Aucun groupe disponible.</p>
-                  ) : (
-                    (tags ?? []).map((tag) => {
-                      const checked = form.tagIds.includes(tag.id);
-                      return (
-                        <label
-                          key={tag.id}
-                          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600"
-                            checked={checked}
-                            onChange={() =>
-                              updateForm(
-                                "tagIds",
-                                checked ? form.tagIds.filter((tid) => tid !== tag.id) : [...form.tagIds, tag.id]
-                              )
-                            }
-                          />
-                          <span className="text-gray-700 dark:text-gray-200">{tag.name}</span>
-                        </label>
-                      );
-                    })
-                  )}
+                  <div className="min-w-0">
+                    <p className="label">Groupes (tags)</p>
+                    <div className={CHECK_LIST_CLASS}>
+                      {(tags ?? []).length === 0 ? (
+                        <p className="p-2 text-sm text-gray-500 dark:text-gray-400">Aucun groupe disponible.</p>
+                      ) : (
+                        (tags ?? []).map((tag) => {
+                          const checked = form.tagIds.includes(tag.id);
+                          return (
+                            <label key={tag.id} className={CHECK_ROW_CLASS}>
+                              <input
+                                type="checkbox"
+                                className="shrink-0"
+                                checked={checked}
+                                onChange={() =>
+                                  updateForm(
+                                    "tagIds",
+                                    checked ? form.tagIds.filter((tid) => tid !== tag.id) : [...form.tagIds, tag.id]
+                                  )
+                                }
+                              />
+                              <span className="min-w-0 break-words text-gray-700 dark:text-gray-200">{tag.name}</span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Un groupe (tag) regroupe des contacts déjà associés à ce tag. Vous pouvez combiner segments et
@@ -530,7 +627,8 @@ export default function CampaignWizardPage() {
 
             {form.targetType === "ALL" && (
               <div className="space-y-4">
-                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+                  <Icon name="info" className="mt-0.5 shrink-0" />
                   Tous les contacts non désabonnés recevront cet email.
                 </div>
                 {renderRecipientsPreview()}
@@ -541,11 +639,9 @@ export default function CampaignWizardPage() {
 
         {/* ---------------- Step 4 — Pièces jointes ---------------- */}
         {step === 3 && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {!campaignId ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Enregistrement automatique de la campagne en cours...
-              </p>
+              autoSavingNotice
             ) : (
               <>
                 <div>
@@ -556,7 +652,7 @@ export default function CampaignWizardPage() {
                     id="attachments"
                     type="file"
                     multiple
-                    className="input"
+                    className="input file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-500/10 dark:file:text-brand-300"
                     onChange={(e) => {
                       const files = e.target.files ? Array.from(e.target.files) : [];
                       if (files.length > 0) {
@@ -566,19 +662,23 @@ export default function CampaignWizardPage() {
                     }}
                   />
                   {uploadMutation.isPending && (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Envoi en cours...</p>
+                    <p className="hint flex items-center gap-2">
+                      <Spinner className="h-3.5 w-3.5 text-brand-500" />
+                      Envoi en cours…
+                    </p>
                   )}
                 </div>
 
                 {templateAttachments.length > 0 && (
-                  <div className="space-y-2">
+                  <div>
                     <p className="label">Pièces jointes du modèle (envoyées automatiquement)</p>
-                    <ul className="divide-y divide-gray-200 rounded-md border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+                    <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
                       {templateAttachments.map((attachment) => (
-                        <li key={attachment.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                          <span className="text-gray-700 dark:text-gray-200">
+                        <li key={attachment.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+                          <Icon name="lock" className="h-4 w-4 shrink-0 text-gray-400" />
+                          <span className="min-w-0 flex-1 break-words text-gray-700 dark:text-gray-200">
                             {attachment.fileName}{" "}
-                            <span className="text-xs text-gray-400 dark:text-gray-500">
+                            <span className="whitespace-nowrap text-xs text-gray-400 dark:text-gray-500">
                               ({Math.round(attachment.sizeBytes / 1024)} Ko)
                             </span>
                           </span>
@@ -588,24 +688,32 @@ export default function CampaignWizardPage() {
                   </div>
                 )}
 
-                <div className="space-y-2">
+                <div>
                   <p className="label">Pièces jointes actuelles</p>
                   {attachments.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Aucune pièce jointe pour le moment.</p>
+                    <p className="rounded-lg border border-dashed border-gray-300 px-3 py-4 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                      Aucune pièce jointe pour le moment.
+                    </p>
                   ) : (
-                    <ul className="divide-y divide-gray-200 rounded-md border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+                    <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
                       {attachments.map((attachment) => (
-                        <li key={attachment.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                          <span className="text-gray-700 dark:text-gray-200">
+                        <li key={attachment.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                          <span className="min-w-0 flex-1 break-words text-gray-700 dark:text-gray-200">
                             {attachment.fileName}{" "}
-                            <span className="text-xs text-gray-400 dark:text-gray-500">
+                            <span className="whitespace-nowrap text-xs text-gray-400 dark:text-gray-500">
                               ({Math.round(attachment.sizeBytes / 1024)} Ko)
                             </span>
                           </span>
                           <Button
+                            type="button"
                             variant="ghost"
                             size="sm"
+                            className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-500/10"
+                            aria-label={`Retirer ${attachment.fileName}`}
                             disabled={removeAttachmentMutation.isPending}
+                            loading={
+                              removeAttachmentMutation.isPending && removeAttachmentMutation.variables === attachment.id
+                            }
                             onClick={() => removeAttachmentMutation.mutate(attachment.id)}
                           >
                             Retirer
@@ -622,23 +730,20 @@ export default function CampaignWizardPage() {
 
         {/* ---------------- Step 3 — Options d'envoi ---------------- */}
         {step === 2 && (
-          <div className="space-y-4">
-            <div className="space-y-2">
+          <div className="space-y-5">
+            <div>
               <p className="label">Comptes SMTP (au moins un requis)</p>
-              <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border border-gray-200 p-2 dark:border-gray-700">
+              <div className={CHECK_LIST_CLASS}>
                 {eligibleSmtpAccounts.length === 0 ? (
                   <p className="p-2 text-sm text-gray-500 dark:text-gray-400">Aucun compte SMTP configuré.</p>
                 ) : (
                   eligibleSmtpAccounts.map((account) => {
                     const checked = form.smtpAccountIds.includes(account.id);
                     return (
-                      <label
-                        key={account.id}
-                        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                      >
+                      <label key={account.id} className={CHECK_ROW_CLASS}>
                         <input
                           type="checkbox"
-                          className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600"
+                          className="shrink-0"
                           checked={checked}
                           onChange={() =>
                             updateForm(
@@ -649,8 +754,9 @@ export default function CampaignWizardPage() {
                             )
                           }
                         />
-                        <span className="text-gray-700 dark:text-gray-200">
-                          {account.label} ({account.fromEmail})
+                        <span className="min-w-0 break-words text-gray-700 dark:text-gray-200">
+                          {account.label}{" "}
+                          <span className="text-gray-500 dark:text-gray-400">({account.fromEmail})</span>
                         </span>
                       </label>
                     );
@@ -659,26 +765,35 @@ export default function CampaignWizardPage() {
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-sm">
+            <label
+              className={clsx(
+                "flex items-start gap-3 rounded-lg border border-gray-200 px-3 py-2.5 text-sm dark:border-gray-800",
+                form.smtpAccountIds.length < 2 ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+              )}
+            >
               <input
                 type="checkbox"
                 disabled={form.smtpAccountIds.length < 2}
                 checked={form.useRotation}
                 onChange={(e) => updateForm("useRotation", e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 disabled:opacity-50 dark:border-gray-600"
+                className="mt-0.5 shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <span className="text-gray-700 dark:text-gray-200">
-                Activer la rotation entre comptes SMTP {form.smtpAccountIds.length < 2 && "(sélectionnez au moins 2 comptes)"}
+                Activer la rotation entre comptes SMTP{" "}
+                {form.smtpAccountIds.length < 2 && (
+                  <span className="text-gray-500 dark:text-gray-400">(sélectionnez au moins 2 comptes)</span>
+                )}
               </span>
             </label>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
               <div>
                 <label className="label" htmlFor="baseDelayMs">
                   Délai de base entre deux envois (ms)
                 </label>
                 <input
                   id="baseDelayMs"
+                  inputMode="numeric"
                   className="input"
                   value={form.baseDelayMs}
                   onChange={(e) => updateForm("baseDelayMs", e.target.value)}
@@ -690,6 +805,7 @@ export default function CampaignWizardPage() {
                 </label>
                 <input
                   id="jitterMs"
+                  inputMode="numeric"
                   className="input"
                   value={form.jitterMs}
                   onChange={(e) => updateForm("jitterMs", e.target.value)}
@@ -701,6 +817,7 @@ export default function CampaignWizardPage() {
                 </label>
                 <input
                   id="maxPerMinute"
+                  inputMode="numeric"
                   className="input"
                   value={form.maxPerMinute}
                   onChange={(e) => updateForm("maxPerMinute", e.target.value)}
@@ -713,6 +830,7 @@ export default function CampaignWizardPage() {
                 </label>
                 <input
                   id="maxPerHour"
+                  inputMode="numeric"
                   className="input"
                   value={form.maxPerHour}
                   onChange={(e) => updateForm("maxPerHour", e.target.value)}
@@ -725,6 +843,7 @@ export default function CampaignWizardPage() {
                 </label>
                 <input
                   id="maxRetries"
+                  inputMode="numeric"
                   className="input"
                   value={form.maxRetries}
                   onChange={(e) => updateForm("maxRetries", e.target.value)}
@@ -741,9 +860,7 @@ export default function CampaignWizardPage() {
                   value={form.scheduledAt}
                   onChange={(e) => updateForm("scheduledAt", e.target.value)}
                 />
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Laisser vide pour un envoi immédiat après validation.
-                </p>
+                <p className="hint">Laisser vide pour un envoi immédiat après validation.</p>
               </div>
             </div>
           </div>
@@ -751,11 +868,9 @@ export default function CampaignWizardPage() {
 
         {/* ---------------- Step 5 — Aperçu ---------------- */}
         {step === 4 && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {!campaignId ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Enregistrement automatique de la campagne en cours...
-              </p>
+              autoSavingNotice
             ) : (
               <>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -770,22 +885,29 @@ export default function CampaignWizardPage() {
                   }}
                 />
                 <Button
-                  disabled={!previewContact || previewMutation.isPending}
+                  type="button"
+                  className="w-full sm:w-auto"
+                  disabled={!previewContact}
+                  loading={previewMutation.isPending}
                   onClick={() => previewMutation.mutate()}
                 >
-                  {previewMutation.isPending ? "Génération..." : "Voir l'aperçu"}
+                  {!previewMutation.isPending && <Icon name="mailOpen" className="h-4 w-4" />}
+                  Voir l'aperçu
                 </Button>
 
                 {previewResult && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      Sujet : {previewResult.subject}
-                    </p>
+                  <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+                    <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-800/40">
+                      <p className="break-words text-sm font-medium text-gray-900 dark:text-gray-100">
+                        <span className="text-gray-500 dark:text-gray-400">Sujet : </span>
+                        {previewResult.subject}
+                      </p>
+                    </div>
                     {/* dangerouslySetInnerHTML is acceptable here — the backend's
                         render+sanitize pipeline is trusted to have already
                         stripped unsafe markup before this HTML reaches the client. */}
                     <div
-                      className="max-h-96 overflow-y-auto rounded-md border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-950"
+                      className="max-h-[28rem] overflow-auto break-words bg-white p-4 dark:bg-gray-950"
                       dangerouslySetInnerHTML={{ __html: previewResult.bodyHtml }}
                     />
                   </div>
@@ -799,49 +921,47 @@ export default function CampaignWizardPage() {
 
         {/* ---------------- Step 6 — Récapitulatif & lancement ---------------- */}
         {step === 5 && (
-          <div className="space-y-4">
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs uppercase text-gray-500 dark:text-gray-400">Nom</dt>
-                <dd className="text-sm text-gray-900 dark:text-gray-100">{form.name || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-gray-500 dark:text-gray-400">Modèle</dt>
-                <dd className="text-sm text-gray-900 dark:text-gray-100">{selectedTemplate?.name ?? "Aucun"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-gray-500 dark:text-gray-400">Ciblage</dt>
-                <dd className="text-sm text-gray-900 dark:text-gray-100">
-                  {form.targetType === "SINGLE" && "Un seul contact"}
-                  {form.targetType === "SEGMENTS" &&
-                    `${form.segmentIds.length} segment(s), ${form.tagIds.length} groupe(s)`}
-                  {form.targetType === "ALL" && "Toute la base"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-gray-500 dark:text-gray-400">Comptes SMTP</dt>
-                <dd className="text-sm text-gray-900 dark:text-gray-100">
-                  {form.smtpAccountIds.length} sélectionné(s) {form.useRotation && "(rotation activée)"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-gray-500 dark:text-gray-400">Délai / marge</dt>
-                <dd className="text-sm text-gray-900 dark:text-gray-100">
-                  {form.baseDelayMs} ms ± {form.jitterMs} ms
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-gray-500 dark:text-gray-400">Planification</dt>
-                <dd className="text-sm text-gray-900 dark:text-gray-100">
-                  {form.scheduledAt ? new Date(form.scheduledAt).toLocaleString("fr-FR") : "Envoi immédiat"}
-                </dd>
-              </div>
+          <div className="space-y-5">
+            <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 sm:grid-cols-2">
+              {(
+                [
+                  { label: "Nom", value: form.name || "—" },
+                  { label: "Modèle", value: selectedTemplate?.name ?? "Aucun" },
+                  {
+                    label: "Ciblage",
+                    value:
+                      form.targetType === "SINGLE"
+                        ? "Un seul contact"
+                        : form.targetType === "SEGMENTS"
+                        ? `${form.segmentIds.length} segment(s), ${form.tagIds.length} groupe(s)`
+                        : "Toute la base",
+                  },
+                  {
+                    label: "Comptes SMTP",
+                    value: `${form.smtpAccountIds.length} sélectionné(s)${form.useRotation ? " (rotation activée)" : ""}`,
+                  },
+                  { label: "Délai / marge", value: `${form.baseDelayMs} ms ± ${form.jitterMs} ms` },
+                  {
+                    label: "Planification",
+                    value: form.scheduledAt ? new Date(form.scheduledAt).toLocaleString("fr-FR") : "Envoi immédiat",
+                  },
+                ] as { label: string; value: string }[]
+              ).map((item) => (
+                <div key={item.label} className="min-w-0 bg-white px-4 py-3 dark:bg-gray-900">
+                  <dt className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {item.label}
+                  </dt>
+                  <dd className="mt-1 break-words text-sm font-medium text-gray-900 dark:text-gray-100">{item.value}</dd>
+                </div>
+              ))}
             </dl>
 
-            <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+            <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-800/30 sm:flex-row sm:items-center">
               <Button
+                type="button"
                 variant="secondary"
-                disabled={resolveMutation.isPending}
+                className="w-full sm:w-auto"
+                loading={resolveMutation.isPending}
                 onClick={async () => {
                   const targetId = campaignId ?? (await handleFinalSave());
                   if (targetId) {
@@ -849,40 +969,58 @@ export default function CampaignWizardPage() {
                   }
                 }}
               >
-                {resolveMutation.isPending ? "Résolution..." : "Résoudre les destinataires"}
+                {!resolveMutation.isPending && <Icon name="users" className="h-4 w-4" />}
+                Résoudre les destinataires
               </Button>
               {resolvedCount !== null && (
-                <span className="text-sm text-gray-600 dark:text-gray-300">
+                <span className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                  <Icon name="checkCircle" className="h-4 w-4 text-emerald-500" />
                   {resolvedCount} destinataire(s) éligible(s)
                 </span>
               )}
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" disabled={saveMutation.isPending} onClick={handleFinalSave}>
-                {saveMutation.isPending ? "Enregistrement..." : "Enregistrer le brouillon"}
+            <div className="flex flex-col-reverse gap-2 border-t border-gray-200 pt-5 dark:border-gray-800 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full sm:w-auto"
+                loading={saveMutation.isPending}
+                onClick={handleFinalSave}
+              >
+                {!saveMutation.isPending && <Icon name="draft" className="h-4 w-4" />}
+                Enregistrer le brouillon
               </Button>
               <Button
-                disabled={saveMutation.isPending || startMutation.isPending}
+                type="button"
+                className="w-full sm:w-auto"
+                disabled={saveMutation.isPending}
+                loading={startMutation.isPending}
                 onClick={handleScheduleOrSend}
               >
-                {startMutation.isPending
-                  ? "Démarrage..."
-                  : form.scheduledAt
-                  ? "Planifier"
-                  : "Envoyer maintenant"}
+                {!startMutation.isPending && <Icon name="send" className="h-4 w-4" />}
+                {startMutation.isPending ? "Démarrage…" : form.scheduledAt ? "Planifier" : "Envoyer maintenant"}
               </Button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Step navigation */}
-      <div className="flex justify-between">
-        <Button variant="ghost" disabled={step === 0} onClick={goBack}>
+      {/* Step navigation — sticky at the bottom of the screen on phones. */}
+      <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-between gap-3 border-t border-gray-200/80 bg-white/85 px-4 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-950/85 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none sm:dark:bg-transparent">
+        <Button type="button" variant="ghost" disabled={step === 0} onClick={goBack}>
+          <Icon name="chevronLeft" className="h-4 w-4" />
           Précédent
         </Button>
-        {step < STEP_LABELS.length - 1 && <Button onClick={goNext}>Suivant</Button>}
+        <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 sm:hidden">
+          {step + 1}/{STEP_LABELS.length}
+        </span>
+        {step < lastStep && (
+          <Button type="button" onClick={goNext}>
+            Suivant
+            <Icon name="chevronRight" className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </div>
   );
