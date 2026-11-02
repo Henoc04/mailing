@@ -20,7 +20,7 @@ export function useSocket(): Socket | null {
       return;
     }
 
-    const instance = io(import.meta.env.VITE_SOCKET_URL, {
+    const instance = io(import.meta.env.VITE_SOCKET_URL || undefined, {
       auth: { token },
     });
 

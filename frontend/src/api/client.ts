@@ -21,7 +21,7 @@ export const TOKEN_STORAGE_KEY = TOKEN_KEY;
 // backend exposes no refresh-cookie/CSRF flow to pair with a cookie-based
 // approach, so localStorage is the simplest viable option for this SPA.
 export const client = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
 });
 
 client.interceptors.request.use((config) => {

@@ -92,7 +92,7 @@ Utiliser le bouton **Tester la connexion** après chaque ajout pour vérifier le
 
 Les liens de suivi et de désinscription sont construits à partir de `PUBLIC_BASE_URL`. En local (`http://localhost:4000`), ils ne sont pas atteignables par les destinataires réels : ils ne fonctionnent qu'une fois l'application déployée sur un nom de domaine public.
 
-Le pixel d'ouverture, la désinscription et les images des modèles sont servis sous `/api/` : en production, il suffit que le proxy (ex. Nginx Proxy Manager) transmette `/api/` et `/socket.io/` au backend (port 4000), le reste au frontend.
+Le pixel d'ouverture, la désinscription et les images des modèles sont servis sous `/api/`. Le conteneur frontend transmet lui-même `/api/`, `/t/` et `/socket.io/` au backend : en production, le proxy (ex. Nginx Proxy Manager) envoie simplement tout le domaine vers le frontend (port 5173).
 
 Test rapide : `https://votre-domaine/api/t/o/test.png` doit renvoyer une image (vide), pas une page HTML.
 
