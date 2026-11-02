@@ -84,3 +84,113 @@ body,
 #root {
   height: 100%;
 }
+
+/* ---- Login page art ---- */
+@keyframes login-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(6%, -4%) scale(1.12);
+  }
+}
+
+@keyframes login-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(0.5deg);
+  }
+}
+
+@keyframes login-toast {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes login-shine {
+  from {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-20deg);
+  }
+}
+
+@keyframes login-twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes login-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+
+.login-shake {
+  animation: login-shake 380ms ease-in-out;
+}
+
+.login-aurora {
+  animation: login-drift 16s ease-in-out infinite;
+}
+
+.login-float {
+  animation: login-float 7s ease-in-out infinite;
+}
+
+.login-toast {
+  animation: login-toast 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-star {
+  animation: login-twinkle 4s ease-in-out infinite;
+}
+
+.login-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  transform: translateX(-120%) skewX(-20deg);
+}
+
+.login-shine:hover::after {
+  animation: login-shine 900ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-aurora,
+  .login-float,
+  .login-toast,
+  .login-star,
+  .login-shake,
+  .login-shine:hover::after {
+    animation: none;
+  }
+}
