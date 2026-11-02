@@ -1,47 +1,48 @@
 import { useEffect, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { Icon, type IconName } from "../../components/ui/Icon";
+import { Icon } from "../../components/ui/Icon";
 import { Spinner } from "../../components/ui/Spinner";
-import { ThemeToggle } from "../../components/layout/ThemeToggle";
 import { LoginArt } from "./LoginArt";
 
-function greeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 5 || hour >= 18) {
-    return "Bonsoir";
-  }
-  return "Bonjour";
-}
-
-interface FloatingFieldProps extends InputHTMLAttributes<HTMLInputElement> {
+interface DarkFieldProps extends InputHTMLAttributes<HTMLInputElement> {
   id: string;
   label: string;
-  icon: IconName;
   trailing?: ReactNode;
 }
 
-/** Input whose label sits inside the field and floats up on focus/fill. */
-function FloatingField({ id, label, icon, trailing, className, ...props }: FloatingFieldProps) {
+/** Dark filled input; the label sits inside and shrinks to the top once focused or filled. */
+function DarkField({ id, label, trailing, className, ...props }: DarkFieldProps) {
   return (
-    <div className="group relative">
-      <Icon
-        name={icon}
-        className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-brand-500"
-      />
+    <div className="relative">
       <input
         id={id}
         placeholder=" "
-        className={`peer block h-14 w-full rounded-2xl border border-gray-200 bg-white pb-2 pl-12 pr-4 pt-6 text-[15px] text-gray-900 shadow-sm outline-none transition placeholder:text-transparent hover:border-gray-300 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 dark:border-gray-800 dark:bg-gray-900 dark:text-white dark:hover:border-gray-700 ${className ?? ""}`}
+        className={`peer block h-14 w-full rounded-lg border border-transparent bg-[#3a3a40] px-4 pb-2 pt-6 text-[15px] text-white outline-none transition placeholder:text-transparent hover:bg-[#404047] focus:border-brand-400/70 focus:bg-[#404047] focus:ring-4 focus:ring-brand-500/20 ${className ?? ""}`}
         {...props}
       />
       <label
         htmlFor={id}
-        className="pointer-events-none absolute left-12 top-1/2 -translate-y-1/2 text-[15px] text-gray-500 transition-all duration-150 peer-focus:top-4 peer-focus:text-xs peer-focus:font-medium peer-focus:text-brand-600 peer-[:not(:placeholder-shown)]:top-4 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-medium dark:text-gray-400 dark:peer-focus:text-brand-400"
+        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] text-white/70 transition-all duration-150 peer-focus:top-[1.1rem] peer-focus:text-[11px] peer-focus:text-brand-200 peer-[:not(:placeholder-shown)]:top-[1.1rem] peer-[:not(:placeholder-shown)]:text-[11px]"
       >
         {label}
       </label>
       {trailing && <div className="absolute inset-y-0 right-2 flex items-center">{trailing}</div>}
+    </div>
+  );
+}
+
+function BrandMark() {
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative">
+        <svg viewBox="0 0 64 52" className="h-12 w-auto" aria-hidden="true">
+          <rect x="4" y="10" width="56" height="38" rx="7" fill="#f5f3ff" />
+          <path d="M8 15 L32 33 L56 15" fill="none" stroke="#6366f1" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M44 2 L60 8 L50 13 Z" fill="#f5f3ff" />
+        </svg>
+      </div>
+      <span className="mt-1 text-xl font-extrabold tracking-tight text-white">Mailing</span>
     </div>
   );
 }
@@ -54,6 +55,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
+  const [showForgotHint, setShowForgotHint] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [shaking, setShaking] = useState(false);
@@ -87,52 +89,35 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-white dark:bg-gray-950 lg:flex-row">
-      {/* Art: compact band on phones/tablets, full panel on desktop */}
-      <div className="h-56 shrink-0 sm:h-64 lg:hidden">
-        <LoginArt compact />
-      </div>
-      <div className="hidden lg:block lg:w-[52%] lg:p-3">
-        <div className="h-full overflow-hidden rounded-[1.75rem]">
-          <LoginArt />
-        </div>
-      </div>
+    <div className="relative flex min-h-full items-center justify-center overflow-hidden bg-[#1c1b2e] p-4 sm:p-8">
+      {/* Blurred, darkened copy of the illustration as the page background */}
+      <LoginArt idPrefix="bg" className="absolute inset-0 h-full w-full scale-110 blur-md" />
+      <div className="absolute inset-0 bg-[#16151f]/60" aria-hidden="true" />
 
-      {/* Form */}
-      <main className="relative -mt-8 flex flex-1 flex-col rounded-t-[1.75rem] bg-white px-6 pb-10 pt-8 dark:bg-gray-950 sm:px-10 lg:mt-0 lg:rounded-none lg:px-16">
-        <div className="flex items-center justify-between lg:justify-end">
-          <div className="flex items-center gap-2 lg:hidden">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-fuchsia-500 text-white">
-              <Icon name="mail" className="h-[18px] w-[18px]" />
-            </div>
-            <span className="font-semibold tracking-tight text-gray-900 dark:text-white">Mailing</span>
-          </div>
-          <ThemeToggle />
+      <div className="relative grid w-full max-w-[880px] animate-pop-in overflow-hidden rounded-[2rem] shadow-2xl shadow-black/50 md:min-h-[540px] md:grid-cols-2">
+        {/* Illustration */}
+        <div className="relative hidden md:block">
+          <LoginArt idPrefix="card" className="absolute inset-0 h-full w-full" />
         </div>
 
-        <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-8">
-          <div className="animate-pop-in">
-            <p className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-600/15 dark:bg-brand-500/10 dark:text-brand-300 dark:ring-brand-400/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
-              Espace d'envoi
-            </p>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">
-              {greeting()}, ravi de vous revoir.
-            </h1>
-            <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-              Connectez-vous pour retrouver vos campagnes, contacts et statistiques.
-            </p>
+        {/* Form panel */}
+        <div className="flex flex-col bg-[#26262b] px-6 py-10 sm:px-12 md:-ml-6 md:w-[calc(100%+1.5rem)] md:rounded-l-[2rem]">
+          <BrandMark />
 
-            <form
-              onSubmit={handleSubmit}
-              onAnimationEnd={() => setShaking(false)}
-              className={`mt-8 space-y-4 ${shaking ? "login-shake" : ""}`}
-              noValidate
-            >
-              <FloatingField
+          <h1 className="mt-7 text-[22px] font-medium leading-snug text-white">
+            Bon retour, connectez-vous à votre compte
+          </h1>
+
+          <form
+            onSubmit={handleSubmit}
+            onAnimationEnd={() => setShaking(false)}
+            className={`mt-6 ${shaking ? "login-shake" : ""}`}
+            noValidate
+          >
+            <div className="space-y-3">
+              <DarkField
                 id="email"
                 label="Adresse email"
-                icon="mail"
                 type="email"
                 autoComplete="email"
                 inputMode="email"
@@ -141,14 +126,12 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 aria-invalid={Boolean(error) || undefined}
               />
-
-              <FloatingField
+              <DarkField
                 id="password"
                 label="Mot de passe"
-                icon="lock"
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
-                className="pr-24"
+                className="pr-12"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyUp={(e) => setCapsLock(e.getModifierState("CapsLock"))}
@@ -157,57 +140,61 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                    className="rounded-md p-2 text-white/70 transition hover:bg-white/10 hover:text-white"
+                    aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
                     aria-pressed={showPassword}
                   >
-                    {showPassword ? "Masquer" : "Afficher"}
+                    <Icon name={showPassword ? "eyeSlash" : "eye"} />
                   </button>
                 }
               />
+            </div>
 
-              {capsLock && (
-                <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                  <Icon name="info" className="h-4 w-4" />
-                  La touche Verr. Maj est activée.
-                </p>
-              )}
+            <div className="mt-2 flex items-start justify-between gap-3 text-[11px]">
+              <span className={capsLock ? "text-amber-300" : "invisible"}>Verr. Maj activée</span>
+              <button
+                type="button"
+                onClick={() => setShowForgotHint((v) => !v)}
+                className="text-white/70 transition hover:text-white"
+                aria-expanded={showForgotHint}
+              >
+                Mot de passe oublié ?
+              </button>
+            </div>
+            {showForgotHint && (
+              <p className="mt-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-white/70">
+                Contactez l'administrateur de la plateforme pour réinitialiser votre mot de passe.
+              </p>
+            )}
 
-              {error && (
-                <div
-                  role="alert"
-                  className="flex items-start gap-2.5 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-600/10 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-400/20"
-                >
-                  <Icon name="alert" className="mt-px h-4 w-4" />
-                  {error}
-                </div>
-              )}
+            {error && (
+              <div
+                role="alert"
+                className="mt-4 flex items-start gap-2 rounded-lg bg-red-500/10 px-3 py-2.5 text-sm text-red-300 ring-1 ring-inset ring-red-400/20"
+              >
+                <Icon name="alert" className="mt-px h-4 w-4" />
+                {error}
+              </div>
+            )}
 
+            <div className="mt-6 flex justify-center">
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="login-shine group relative flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 text-[15px] font-semibold text-white shadow-lg shadow-brand-600/30 transition hover:shadow-xl hover:shadow-brand-600/40 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/30 active:scale-[0.99] disabled:cursor-wait disabled:opacity-80"
+                className="inline-flex h-12 min-w-[170px] items-center justify-center gap-2 rounded-xl bg-[#ececf1] px-8 text-lg font-semibold text-[#26262b] shadow-lg shadow-black/30 transition hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-400/40 active:scale-[0.98] disabled:cursor-wait disabled:opacity-80"
               >
-                {isSubmitting ? (
-                  <>
-                    <Spinner className="h-5 w-5" />
-                    Connexion…
-                  </>
-                ) : (
-                  <>
-                    Se connecter
-                    <Icon name="send" className="h-5 w-5 transition-transform duration-300 group-hover:-rotate-12 group-hover:translate-x-1" />
-                  </>
-                )}
+                {isSubmitting && <Spinner className="h-5 w-5" />}
+                {isSubmitting ? "Connexion…" : "Se connecter"}
               </button>
-            </form>
+            </div>
+          </form>
 
-            <p className="mt-8 flex items-center justify-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
-              <Icon name="shield" className="h-4 w-4" />
-              Connexion chiffrée · accès réservé aux membres de l'équipe
-            </p>
-          </div>
+          <p className="mt-auto pt-10 text-center text-sm text-white/80">
+            Pas encore de compte ? <span className="font-semibold text-white">Demandez un accès</span> à votre
+            administrateur.
+          </p>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
