@@ -13,6 +13,20 @@ function toSafeSmtpAccount(account: SmtpAccount): SafeSmtpAccount {
   return safe;
 }
 
+/**
+ * Decrypts the stored SMTP password. Fails when ENCRYPTION_KEY changed since
+ * the account was saved (e.g. database copied from another environment).
+ */
+function decryptPassword(account: SmtpAccount): string {
+  try {
+    return decrypt(account.encryptedPassword);
+  } catch {
+    throw new Error(
+      `Mot de passe du compte SMTP « ${account.fromEmail} » illisible : la clé ENCRYPTION_KEY a changé depuis son enregistrement. Ressaisissez le mot de passe dans le compte SMTP.`,
+    );
+  }
+}
+
 export async function create(ownerId: string, input: CreateSmtpAccountInput): Promise<SafeSmtpAccount> {
   const encryptedPassword = encrypt(input.password);
 
@@ -96,7 +110,12 @@ export async function testConnection(ownerId: string, id: string): Promise<TestC
     throw new NotFoundError("Compte SMTP introuvable");
   }
 
-  const decryptedPassword = decrypt(account.encryptedPassword);
+  let decryptedPassword: string;
+  try {
+    decryptedPassword = decryptPassword(account);
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
 
   const transporter = nodemailer.createTransport({
     host: account.host,
@@ -166,7 +185,7 @@ export async function getDecryptedCredentials(id: string): Promise<DecryptedSmtp
     port: account.port,
     security: account.security,
     username: account.username,
-    password: decrypt(account.encryptedPassword),
+    password: decryptPassword(account),
     fromEmail: account.fromEmail,
     fromName: account.fromName,
   };
