@@ -1,0 +1,60 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-mailing}
+      MYSQL_USER: ${MYSQL_USER:-mailing}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-mailing}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-change-me-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-mailing}:${MYSQL_PASSWORD:-mailing}@mysql:3306/${MYSQL_DATABASE:-mailing}
+      PORT: 4000
+      NODE_ENV: production
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:4000}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@mailing.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-ChangeMe123!}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Administrateur}
+      GEOAPIFY_API_KEY: ${GEOAPIFY_API_KEY:-}
+      HUNTER_API_KEY: ${HUNTER_API_KEY:-}
+    ports:
+      - "4000:4000"
+    volumes:
+      - backend-uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:4000/api}
+        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:4000}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  mysql-data:
+  backend-uploads:

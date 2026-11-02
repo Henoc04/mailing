@@ -1,0 +1,20 @@
+{
+  "name": "mailing-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Plateforme gratuite et auto-hebergee d'emailing personnalise (mail-merge) sur SMTP standard",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "build:backend": "npm run build --workspace backend",
+    "build:frontend": "npm run build --workspace frontend",
+    "build": "npm run build:backend && npm run build:frontend",
+    "prisma:migrate": "npm run prisma:migrate --workspace backend",
+    "prisma:generate": "npm run prisma:generate --workspace backend",
+    "prisma:seed": "npm run prisma:seed --workspace backend"
+  }
+}

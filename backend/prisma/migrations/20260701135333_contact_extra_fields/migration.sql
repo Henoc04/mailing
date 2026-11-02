@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE `Contact` ADD COLUMN `adresse` VARCHAR(191) NULL,
+    ADD COLUMN `codePostal` VARCHAR(191) NULL,
+    ADD COLUMN `departement` VARCHAR(191) NULL,
+    ADD COLUMN `region` VARCHAR(191) NULL,
+    ADD COLUMN `siteWeb` VARCHAR(191) NULL,
+    MODIFY `prenom` VARCHAR(191) NULL;

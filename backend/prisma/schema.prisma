@@ -1,0 +1,339 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum SmtpSecurity {
+  NONE
+  SSL
+  STARTTLS
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum RecipientStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum TrackingEventType {
+  OPEN
+  CLICK
+}
+
+enum SegmentFilterMode {
+  AND
+  OR
+}
+
+enum CampaignTargetType {
+  SINGLE
+  SEGMENTS
+  ALL
+}
+
+enum Genre {
+  HOMME
+  FEMME
+  AUTRE
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         Role     @default(USER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  smtpAccounts SmtpAccount[]
+  contacts     Contact[]
+  tags         Tag[]
+  segments     Segment[]
+  templates    Template[]
+  campaigns    Campaign[]
+  auditLogs    AuditLog[]
+
+  @@index([email])
+}
+
+model SmtpAccount {
+  id                String       @id @default(cuid())
+  ownerId           String
+  owner             User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  label             String
+  host              String
+  port              Int
+  security          SmtpSecurity @default(STARTTLS)
+  username          String
+  encryptedPassword String       @db.Text
+  fromEmail         String
+  fromName          String
+  rotationGroup     String?
+  isActive          Boolean      @default(true)
+  dailyQuota        Int?
+  lastTestedAt      DateTime?
+  lastTestOk        Boolean?
+  lastTestError     String?      @db.Text
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  campaigns Campaign[] @relation("CampaignSmtpAccounts")
+  sendLogs  SendLog[]
+
+  @@index([ownerId])
+  @@index([rotationGroup])
+}
+
+model Contact {
+  id             String   @id @default(cuid())
+  ownerId        String
+  owner          User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  prenom         String?
+  nom            String
+  genre          Genre?
+  email          String
+  entreprise     String?
+  fonction       String?
+  telephone      String?
+  adresse        String?
+  codePostal     String?
+  ville          String?
+  departement    String?
+  region         String?
+  pays           String?
+  siteWeb        String?
+  notes          String?  @db.Text
+  isUnsubscribed Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tags            ContactTag[]
+  campaignEntries CampaignRecipient[]
+
+  @@unique([ownerId, email])
+  @@index([ownerId])
+  @@index([email])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  color     String?
+  createdAt DateTime @default(now())
+
+  contacts ContactTag[]
+  campaigns Campaign[] @relation("CampaignTags")
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
+}
+
+model ContactTag {
+  contactId String
+  tagId     String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+  @@index([tagId])
+}
+
+model Segment {
+  id          String            @id @default(cuid())
+  ownerId     String
+  owner       User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  filterMode  SegmentFilterMode @default(AND)
+  filterJson  Json
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  campaigns Campaign[] @relation("CampaignSegments")
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
+}
+
+model Template {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  subject   String
+  bodyHtml  String   @db.LongText
+  bodyText  String?  @db.Text
+  isDraft   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns   Campaign[]
+  attachments Attachment[]
+
+  @@index([ownerId])
+}
+
+model Attachment {
+  id         String    @id @default(cuid())
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  templateId String?
+  template   Template? @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  fileName   String
+  storedPath String
+  mimeType   String
+  sizeBytes  Int
+  createdAt  DateTime  @default(now())
+
+  @@index([campaignId])
+  @@index([templateId])
+}
+
+model Campaign {
+  id              String             @id @default(cuid())
+  ownerId         String
+  owner           User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name            String
+  templateId      String?
+  template        Template?          @relation(fields: [templateId], references: [id])
+  subjectOverride String?
+  status          CampaignStatus     @default(DRAFT)
+
+  targetType      CampaignTargetType @default(SEGMENTS)
+  targetContactId String?
+  segments        Segment[]          @relation("CampaignSegments")
+  // Direct group targeting: a Tag already represents a named, static group
+  // of contacts (via ContactTag). Selecting tags here lets a campaign target
+  // one or more groups directly, without requiring a full dynamic Segment
+  // filter rule to be built first.
+  tags            Tag[]              @relation("CampaignTags")
+
+  smtpAccounts SmtpAccount[] @relation("CampaignSmtpAccounts")
+  useRotation  Boolean       @default(false)
+
+  baseDelayMs Int @default(3000)
+  jitterMs    Int @default(2000)
+  maxPerMinute Int?
+  maxPerHour   Int?
+  maxRetries   Int @default(3)
+
+  scheduledAt    DateTime?
+  recurrenceRule String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+
+  totalRecipients Int @default(0)
+  sentCount       Int @default(0)
+  failedCount     Int @default(0)
+  openedCount     Int @default(0)
+  clickedCount    Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  recipients     CampaignRecipient[]
+  attachments    Attachment[]
+  sendLogs       SendLog[]
+  trackingEvents TrackingEvent[]
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+model CampaignRecipient {
+  id            String          @id @default(cuid())
+  campaignId    String
+  campaign      Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId     String
+  contact       Contact         @relation(fields: [contactId], references: [id])
+  mergeDataJson Json
+  status        RecipientStatus @default(PENDING)
+  attempts      Int             @default(0)
+  nextAttemptAt DateTime        @default(now())
+  smtpAccountId String?
+  errorMessage  String?         @db.Text
+  sentAt        DateTime?
+  durationMs    Int?
+  trackingToken String          @unique @default(cuid())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trackingEvents TrackingEvent[]
+
+  @@index([campaignId, status, nextAttemptAt])
+  @@index([contactId])
+}
+
+model SendLog {
+  id             String          @id @default(cuid())
+  campaignId     String
+  campaign       Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  smtpAccountId  String?
+  smtpAccount    SmtpAccount?    @relation(fields: [smtpAccountId], references: [id])
+  recipientEmail String
+  subject        String
+  status         RecipientStatus
+  errorMessage   String?         @db.Text
+  durationMs     Int?
+  sentAt         DateTime        @default(now())
+
+  @@index([campaignId])
+  @@index([sentAt])
+}
+
+model TrackingEvent {
+  id                  String            @id @default(cuid())
+  campaignId          String
+  campaign            Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignRecipientId String
+  campaignRecipient   CampaignRecipient @relation(fields: [campaignRecipientId], references: [id], onDelete: Cascade)
+  type                TrackingEventType
+  url                 String?           @db.Text
+  userAgent           String?           @db.Text
+  ipAddress           String?
+  occurredAt          DateTime          @default(now())
+
+  @@index([campaignId, type])
+  @@index([campaignRecipientId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  metaJson   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+}
