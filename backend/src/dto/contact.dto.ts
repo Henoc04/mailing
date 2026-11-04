@@ -92,8 +92,19 @@ export const bulkTagActionSchema = z
     path: ["contactIds"],
   });
 
+export const bulkDeleteSchema = z
+  .object({
+    contactIds: z.array(z.string()).optional(),
+    filter: contactFilterSchema.optional(),
+  })
+  .refine((data) => (data.contactIds && data.contactIds.length > 0) || !!data.filter, {
+    message: "Provide either a non-empty contactIds array or a filter",
+    path: ["contactIds"],
+  });
+
 export type CreateContactInput = z.infer<typeof createContactSchema>;
 export type UpdateContactInput = z.infer<typeof updateContactSchema>;
 export type ListContactsQuery = z.infer<typeof listContactsQuerySchema>;
 export type ContactFilter = z.infer<typeof contactFilterSchema>;
 export type BulkTagActionInput = z.infer<typeof bulkTagActionSchema>;
+export type BulkDeleteInput = z.infer<typeof bulkDeleteSchema>;

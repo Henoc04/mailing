@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { asyncHandler } from "./asyncHandler";
 import * as contactService from "../services/contact.service";
-import type { BulkTagActionInput, ListContactsQuery } from "../dto/contact.dto";
+import type { BulkDeleteInput, BulkTagActionInput, ListContactsQuery } from "../dto/contact.dto";
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
   const result = await contactService.list(req.user!.id, req.query as unknown as ListContactsQuery);
@@ -36,5 +36,10 @@ export const setTags = asyncHandler(async (req: Request, res: Response) => {
 
 export const bulkTag = asyncHandler(async (req: Request, res: Response) => {
   const result = await contactService.bulkSetTag(req.user!.id, req.body as BulkTagActionInput);
+  res.status(200).json(result);
+});
+
+export const bulkDelete = asyncHandler(async (req: Request, res: Response) => {
+  const result = await contactService.bulkDelete(req.user!.id, req.body as BulkDeleteInput);
   res.status(200).json(result);
 });

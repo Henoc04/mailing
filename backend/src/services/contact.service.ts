@@ -2,6 +2,7 @@ import type { Contact, Prisma, Tag } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { ConflictError, NotFoundError, ValidationError } from "../errors/errors";
 import type {
+  BulkDeleteInput,
   BulkTagActionInput,
   ContactFilter,
   CreateContactInput,
@@ -101,7 +102,51 @@ export async function remove(ownerId: string, id: string): Promise<void> {
     throw new NotFoundError("Contact introuvable");
   }
 
-  await prisma.contact.delete({ where: { id } });
+  const { deleted } = await deleteContacts([id]);
+  if (deleted === 0) {
+    throw new ConflictError(
+      "Ce contact fait partie d'une campagne en cours, en pause ou planifiée : il ne peut pas être supprimé pour l'instant."
+    );
+  }
+}
+
+// Campaigns whose recipient queue is still in use: their contacts can't be
+// deleted without breaking the send.
+const ACTIVE_CAMPAIGN_STATUSES = ["SENDING", "PAUSED", "SCHEDULED"] as const;
+
+export interface BulkDeleteResult {
+  deleted: number;
+  /** Contacts kept because they belong to an active campaign. */
+  skipped: number;
+}
+
+/**
+ * Deletes contacts by id (ownership must already be checked). A contact that
+ * received past campaigns is deleted with its CampaignRecipient rows (and
+ * their tracking events); campaign counters are aggregates and stay as is.
+ * Contacts queued in an active campaign are skipped.
+ */
+async function deleteContacts(ids: string[]): Promise<BulkDeleteResult> {
+  if (ids.length === 0) {
+    return { deleted: 0, skipped: 0 };
+  }
+
+  const busy = await prisma.campaignRecipient.findMany({
+    where: { contactId: { in: ids }, campaign: { status: { in: [...ACTIVE_CAMPAIGN_STATUSES] } } },
+    select: { contactId: true },
+    distinct: ["contactId"],
+  });
+  const busyIds = new Set(busy.map((r) => r.contactId));
+  const deletableIds = ids.filter((id) => !busyIds.has(id));
+
+  if (deletableIds.length > 0) {
+    await prisma.$transaction([
+      prisma.campaignRecipient.deleteMany({ where: { contactId: { in: deletableIds } } }),
+      prisma.contact.deleteMany({ where: { id: { in: deletableIds } } }),
+    ]);
+  }
+
+  return { deleted: deletableIds.length, skipped: busyIds.size };
 }
 
 export async function getById(ownerId: string, id: string): Promise<ContactWithTags> {
@@ -263,6 +308,33 @@ export async function bulkSetTag(ownerId: string, input: BulkTagActionInput): Pr
   }
 
   return { updated: targetIds.length };
+}
+
+export async function bulkDelete(ownerId: string, input: BulkDeleteInput): Promise<BulkDeleteResult> {
+  const { contactIds, filter } = input;
+
+  let targetIds: string[];
+  if (contactIds && contactIds.length > 0) {
+    const owned = await prisma.contact.findMany({
+      where: { id: { in: contactIds }, ownerId },
+      select: { id: true },
+    });
+    targetIds = owned.map((c) => c.id);
+  } else if (filter) {
+    targetIds = await resolveIdsByFilter(ownerId, filter);
+  } else {
+    throw new ValidationError("Aucun contact ciblé (contactIds ou filter requis)");
+  }
+
+  // Chunked so a "delete all 20 000 matching contacts" request doesn't build
+  // a single huge IN (...) clause.
+  const result: BulkDeleteResult = { deleted: 0, skipped: 0 };
+  for (let i = 0; i < targetIds.length; i += 1000) {
+    const chunk = await deleteContacts(targetIds.slice(i, i + 1000));
+    result.deleted += chunk.deleted;
+    result.skipped += chunk.skipped;
+  }
+  return result;
 }
 
 export interface BulkCreateResult {

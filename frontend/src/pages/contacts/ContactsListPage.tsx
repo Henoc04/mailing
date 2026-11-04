@@ -14,6 +14,7 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorState, LoadingState } from "../../components/ui/States";
 import { useToast } from "../../components/ui/ToastProvider";
+import { extractErrorMessage } from "../campaigns/wizard/wizardForm";
 
 type SortableField = NonNullable<ListContactsQuery["sortBy"]>;
 
@@ -141,6 +142,7 @@ export default function ContactsListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [bulkTagMode, setBulkTagMode] = useState<"existing" | "new">("existing");
   const [bulkTagId, setBulkTagId] = useState("");
   const [bulkNewTagName, setBulkNewTagName] = useState("");
@@ -202,7 +204,29 @@ export default function ContactsListPage() {
       showToast("Contact supprimé", "success");
       setDeletingContact(null);
     },
-    onError: () => showToast("Impossible de supprimer le contact", "error"),
+    onError: (error) => showToast(extractErrorMessage(error, "Impossible de supprimer le contact"), "error"),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: () =>
+      contactsApi.bulkDelete(
+        selectAllMatching
+          ? { filter: { search: search || undefined, tagId: tagId || undefined } }
+          : { contactIds: Array.from(selectedIds) }
+      ),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+      const kept =
+        result.skipped > 0
+          ? ` ${result.skipped} conservé(s) car présent(s) dans une campagne en cours, en pause ou planifiée.`
+          : "";
+      showToast(`${result.deleted} contact(s) supprimé(s).${kept}`, result.skipped > 0 ? "info" : "success");
+      setIsBulkDeleteOpen(false);
+      clearSelection();
+      setPage(1);
+    },
+    onError: (error) => showToast(extractErrorMessage(error, "Impossible de supprimer les contacts"), "error"),
   });
 
   const bulkTagMutation = useMutation({
@@ -437,6 +461,10 @@ export default function ContactsListPage() {
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={openBulkModal}>
               Assigner à un groupe
+            </Button>
+            <Button type="button" variant="danger" size="sm" onClick={() => setIsBulkDeleteOpen(true)}>
+              <Icon name="trash" className="h-4 w-4" />
+              Supprimer
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={clearSelection}>
               Tout désélectionner
@@ -982,6 +1010,40 @@ export default function ContactsListPage() {
             onClick={() => deletingContact && removeMutation.mutate(deletingContact.id)}
           >
             Supprimer
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isBulkDeleteOpen}
+        onClose={() => setIsBulkDeleteOpen(false)}
+        size="sm"
+        title={`Supprimer ${selectionCount} contact(s)`}
+      >
+        <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+          <p>
+            {selectAllMatching
+              ? `Tous les contacts correspondant à la recherche actuelle (${selectionCount}) vont être supprimés.`
+              : `Les ${selectionCount} contact(s) sélectionné(s) vont être supprimés.`}{" "}
+            Cette action est irréversible.
+          </p>
+          <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+            Leur historique d'envoi est aussi effacé (les totaux des campagnes restent inchangés). Les contacts
+            présents dans une campagne en cours, en pause ou planifiée sont conservés.
+          </p>
+        </div>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={() => setIsBulkDeleteOpen(false)}>
+            Annuler
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            className="w-full sm:w-auto"
+            loading={bulkDeleteMutation.isPending}
+            onClick={() => bulkDeleteMutation.mutate()}
+          >
+            Supprimer définitivement
           </Button>
         </div>
       </Modal>

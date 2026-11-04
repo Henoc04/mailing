@@ -99,3 +99,20 @@ export async function bulkTag(input: BulkTagInput): Promise<BulkTagResult> {
   const { data } = await client.post<BulkTagResult>("/contacts/bulk-tag", input);
   return data;
 }
+
+export interface BulkDeleteInput {
+  contactIds?: string[];
+  filter?: ContactFilter;
+}
+
+export interface BulkDeleteResult {
+  deleted: number;
+  /** Contacts kept because they belong to a campaign being sent, paused or scheduled. */
+  skipped: number;
+}
+
+// Deletes an explicit id list, or every contact matching a filter.
+export async function bulkDelete(input: BulkDeleteInput): Promise<BulkDeleteResult> {
+  const { data } = await client.post<BulkDeleteResult>("/contacts/bulk-delete", input);
+  return data;
+}
