@@ -227,6 +227,9 @@ model Campaign {
   template        Template?          @relation(fields: [templateId], references: [id])
   subjectOverride String?
   status          CampaignStatus     @default(DRAFT)
+  // Why the worker paused the campaign on its own (e.g. unreadable SMTP
+  // password); null for a manual pause.
+  pauseReason     String?            @db.Text
 
   targetType      CampaignTargetType @default(SEGMENTS)
   targetContactId String?

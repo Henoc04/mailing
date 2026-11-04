@@ -110,14 +110,16 @@ export type DueRecipient = CampaignRecipient & { campaign: Campaign };
  * server-side-only process).
  *
  * Finds the single most overdue PENDING recipient belonging to a campaign
- * that is currently SENDING.
+ * that is currently SENDING, skipping `excludedCampaignIds` (campaigns the
+ * worker is currently pacing or rate-limiting).
  */
-export async function getNextDueRecipient(): Promise<DueRecipient | null> {
+export async function getNextDueRecipient(excludedCampaignIds: string[] = []): Promise<DueRecipient | null> {
   return prisma.campaignRecipient.findFirst({
     where: {
       status: "PENDING",
       nextAttemptAt: { lte: new Date() },
       campaign: { status: "SENDING" },
+      ...(excludedCampaignIds.length > 0 ? { campaignId: { notIn: excludedCampaignIds } } : {}),
     },
     orderBy: { nextAttemptAt: "asc" },
     include: { campaign: true },
@@ -135,6 +137,14 @@ export async function markRecipientSending(recipientId: string): Promise<void> {
   await prisma.campaignRecipient.update({
     where: { id: recipientId },
     data: { status: "SENDING" },
+  });
+}
+
+/** Puts a claimed recipient back in the queue untouched (no attempt counted). */
+export async function releaseRecipient(recipientId: string): Promise<void> {
+  await prisma.campaignRecipient.update({
+    where: { id: recipientId },
+    data: { status: "PENDING" },
   });
 }
 

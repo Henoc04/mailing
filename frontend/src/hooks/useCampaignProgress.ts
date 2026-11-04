@@ -6,6 +6,7 @@ import { useSocket } from "./useSocket";
 
 export interface CampaignProgressState {
   status: CampaignStatus | null;
+  pauseReason: string | null;
   totalRecipients: number;
   sentCount: number;
   failedCount: number;
@@ -93,6 +94,7 @@ export function useCampaignProgress(campaignId: string): CampaignProgressState {
 
   return {
     status: latest?.status ?? null,
+    pauseReason: latest?.pauseReason ?? null,
     totalRecipients,
     sentCount,
     failedCount,

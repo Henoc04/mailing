@@ -28,6 +28,7 @@ export const progress = asyncHandler(async (req: Request, res: Response) => {
 
   res.status(200).json({
     status: campaign.status,
+    pauseReason: campaign.pauseReason,
     totalRecipients: campaign.totalRecipients,
     sentCount: campaign.sentCount,
     failedCount: campaign.failedCount,

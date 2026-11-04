@@ -140,9 +140,17 @@ export default function CampaignsListPage() {
       key: "status",
       header: "Statut",
       render: (campaign) => (
-        <Badge dot color={STATUS_COLORS[campaign.status]}>
-          {STATUS_LABELS[campaign.status]}
-        </Badge>
+        <div className="space-y-1">
+          <Badge dot color={STATUS_COLORS[campaign.status]}>
+            {STATUS_LABELS[campaign.status]}
+          </Badge>
+          {campaign.status === "PAUSED" && campaign.pauseReason && (
+            <p className="flex max-w-[16rem] items-start gap-1 text-xs text-amber-700 dark:text-amber-300" title={campaign.pauseReason}>
+              <Icon name="alert" className="mt-px h-3.5 w-3.5" />
+              <span className="line-clamp-2">Pause automatique : compte SMTP à corriger</span>
+            </p>
+          )}
+        </div>
       ),
     },
     {

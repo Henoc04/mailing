@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import clsx from "clsx";
@@ -218,6 +218,29 @@ export default function CampaignProgressPage() {
           </>
         }
       />
+
+      {status === "PAUSED" && progress.pauseReason && (
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 sm:flex-row sm:items-start"
+        >
+          <Icon name="alert" className="mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-medium">Envoi mis en pause automatiquement</p>
+            <p className="mt-1">{progress.pauseReason}</p>
+            <p className="mt-1 text-amber-700/80 dark:text-amber-200/70">
+              Corrigez le compte SMTP, puis cliquez sur « Reprendre ».
+            </p>
+          </div>
+          <Link
+            to="/smtp"
+            className="btn h-9 shrink-0 border border-amber-300 bg-white px-3 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-500/10"
+          >
+            <Icon name="server" className="h-4 w-4" />
+            Comptes SMTP
+          </Link>
+        </div>
+      )}
 
       {isFinal && status && (
         <div className={clsx("flex items-start gap-3 rounded-xl border p-4 text-sm", FINAL_TONES[status])}>

@@ -46,6 +46,17 @@ export class SmtpError extends AppError {
   }
 }
 
+/**
+ * The SMTP account itself can't be used (e.g. its stored password can't be
+ * decrypted). Retrying won't help until someone fixes the account, so the
+ * send worker pauses the campaign instead of burning retries.
+ */
+export class SmtpAccountUnusableError extends AppError {
+  constructor(message: string) {
+    super(message, 422);
+  }
+}
+
 export class ExternalApiError extends AppError {
   constructor(message = "External service error") {
     super(message, 502);

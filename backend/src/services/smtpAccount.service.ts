@@ -2,7 +2,7 @@ import type { SmtpAccount } from "@prisma/client";
 import nodemailer from "nodemailer";
 import { prisma } from "../lib/prisma";
 import { encrypt, decrypt } from "../lib/crypto";
-import { NotFoundError } from "../errors/errors";
+import { NotFoundError, SmtpAccountUnusableError } from "../errors/errors";
 import type { CreateSmtpAccountInput, UpdateSmtpAccountInput } from "../dto/smtpAccount.dto";
 
 export type SafeSmtpAccount = Omit<SmtpAccount, "encryptedPassword">;
@@ -21,7 +21,7 @@ function decryptPassword(account: SmtpAccount): string {
   try {
     return decrypt(account.encryptedPassword);
   } catch {
-    throw new Error(
+    throw new SmtpAccountUnusableError(
       `Mot de passe du compte SMTP « ${account.fromEmail} » illisible : la clé ENCRYPTION_KEY a changé depuis son enregistrement. Ressaisissez le mot de passe dans le compte SMTP.`,
     );
   }

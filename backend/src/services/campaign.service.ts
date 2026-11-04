@@ -370,6 +370,8 @@ export async function updateCounters(campaignId: string, delta: UpdateCountersDe
 export interface MarkStatusExtra {
   startedAt?: Date;
   completedAt?: Date;
+  /** Only kept with status PAUSED; any other transition clears it. */
+  pauseReason?: string;
 }
 
 /** Exported for the future sendWorker to call for pause/resume/cancel/complete transitions. */
@@ -378,6 +380,7 @@ export async function markStatus(campaignId: string, status: CampaignStatus, ext
     where: { id: campaignId },
     data: {
       status,
+      pauseReason: status === "PAUSED" ? (extra?.pauseReason ?? null) : null,
       ...(extra?.startedAt ? { startedAt: extra.startedAt } : {}),
       ...(extra?.completedAt ? { completedAt: extra.completedAt } : {}),
     },

@@ -37,26 +37,14 @@
  * every processed recipient (success or terminal/retried failure) for that
  * recipient's campaign.
  *
- * SINGLE-CANDIDATE-AT-A-TIME DESIGN — how pacing/rate-limiting interact with
- * it: because `getNextDueRecipient()` only ever returns ONE row (the
- * globally most-overdue one across ALL campaigns), if that row's campaign is
- * currently paced-out (`nextAllowedSendAtByCampaignId`) or rate-limited
- * (`rateLimitByCampaignId`), this implementation does NOT claim or send it —
- * it simply returns early for this tick without calling
- * `markRecipientSending`, leaving the recipient PENDING and untouched. It
- * relies on the short fixed poll interval (300ms, see `TICK_INTERVAL_MS`)
- * to retry very soon and, in the meantime, does NOT attempt to fetch a
- * second/third candidate from a different campaign. This is a deliberate v1
- * simplification (explicitly sanctioned by the spec as an acceptable
- * tradeoff): a single campaign that is heavily rate-limited or has a long
- * `baseDelayMs` and keeps being the "most overdue" row can transiently delay
- * discovery of OTHER campaigns' due recipients, for up to one poll interval
- * at a time, until its `nextAttemptAt` no longer sorts first (e.g. once
- * another campaign's recipient becomes more overdue). Given the 300ms poll
- * interval this is a minor, self-limiting throughput hiccup, not a
- * correctness bug, and keeps the implementation simple and easy to reason
- * about. A future v2 could fetch a small batch (e.g. 5-10 candidates) and
- * pick the first non-blocked one to eliminate this entirely.
+ * BLOCKED CAMPAIGNS ARE SKIPPED: `getNextDueRecipient()` returns the
+ * globally most-overdue PENDING row. If that row's campaign is currently
+ * paced-out (`nextAllowedSendAtByCampaignId`) or rate-limited
+ * (`rateLimitByCampaignId`), the tick does NOT claim it; it adds that
+ * campaign to an exclusion list and asks again, up to
+ * `MAX_CANDIDATES_PER_TICK` times. Without this, a long-running campaign
+ * with a pacing delay would keep its oldest recipient first in line forever
+ * and block every campaign started after it until it finished.
  *
  * PACING/TICK LOOP: implemented as a `setInterval` firing every
  * `TICK_INTERVAL_MS` (300ms), NOT a recursive self-scheduling `setTimeout`.
@@ -89,8 +77,11 @@ import {
   markRecipientSent,
   markRecipientFailed,
   markRecipientSkipped,
+  releaseRecipient,
   startDueScheduledCampaigns,
 } from "../services/sendQueue.service";
+import * as campaignService from "../services/campaign.service";
+import { SmtpAccountUnusableError } from "../errors/errors";
 import { pickForRotation } from "../services/smtpAccount.service";
 import { sendMail, isRetryableSmtpError, isHardBounce } from "../services/smtpTransport.service";
 import {
@@ -102,6 +93,9 @@ import {
 } from "../services/mergeEngine.service";
 
 const TICK_INTERVAL_MS = 300;
+
+/** How many blocked campaigns a single tick may skip before giving up. */
+const MAX_CANDIDATES_PER_TICK = 20;
 
 // How often to check for SCHEDULED campaigns whose scheduledAt has passed and
 // auto-start them. Coarser than TICK_INTERVAL_MS on purpose — schedules are
@@ -250,6 +244,7 @@ async function emitProgressSnapshot(campaignId: string, campaign: Campaign): Pro
       openedCount: true,
       clickedCount: true,
       totalRecipients: true,
+      pauseReason: true,
     },
   });
 
@@ -285,24 +280,27 @@ async function processScheduleTick(): Promise<void> {
  */
 async function processTick(): Promise<void> {
   try {
-    const dueRecipient = await getNextDueRecipient();
+    // Skip campaigns that are paced-out or rate-limited so they don't block
+    // the others — see file header "BLOCKED CAMPAIGNS ARE SKIPPED".
+    const excludedCampaignIds: string[] = [];
+    let dueRecipient: Awaited<ReturnType<typeof getNextDueRecipient>> = null;
+    for (let i = 0; i < MAX_CANDIDATES_PER_TICK; i++) {
+      const candidate = await getNextDueRecipient(excludedCampaignIds);
+      if (!candidate) {
+        return;
+      }
+      if (isPacedOut(candidate.campaign.id) || isRateLimited(candidate.campaign)) {
+        excludedCampaignIds.push(candidate.campaign.id);
+        continue;
+      }
+      dueRecipient = candidate;
+      break;
+    }
     if (!dueRecipient) {
       return;
     }
 
     const campaign = dueRecipient.campaign;
-
-    // Pacing gate: don't starve other campaigns waiting behind this one —
-    // see file header "SINGLE-CANDIDATE-AT-A-TIME DESIGN" for the accepted
-    // tradeoff of this simplified approach.
-    if (isPacedOut(campaign.id)) {
-      return;
-    }
-
-    // Rate-limit gate: same "skip this tick, don't block the loop" approach.
-    if (isRateLimited(campaign)) {
-      return;
-    }
 
     await markRecipientSending(dueRecipient.id);
 
@@ -446,6 +444,19 @@ async function processRecipientSend(
       "sendWorker: recipient email sent successfully"
     );
   } catch (err) {
+    if (err instanceof SmtpAccountUnusableError) {
+      // Every recipient would fail the same way: pause the whole campaign
+      // with the reason instead of exhausting each recipient's retries.
+      await releaseRecipient(dueRecipient.id);
+      await campaignService.markStatus(campaign.id, "PAUSED", { pauseReason: err.message });
+      logger.warn(
+        { campaignId: campaign.id, smtpAccountId, err: err.message },
+        "sendWorker: SMTP account unusable, campaign paused"
+      );
+      await emitProgressSnapshot(campaign.id, campaign);
+      return;
+    }
+
     const durationMs = Date.now() - start;
     const retryable = isRetryableSmtpError(err);
     const errorMessage = err instanceof Error ? err.message : String(err);

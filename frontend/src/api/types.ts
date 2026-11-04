@@ -144,6 +144,8 @@ export interface Campaign {
   template?: Template | null;
   subjectOverride: string | null;
   status: CampaignStatus;
+  /** Set when the send worker paused the campaign on its own. */
+  pauseReason?: string | null;
 
   targetType: CampaignTargetType;
   targetContactId: string | null;
@@ -285,6 +287,7 @@ export interface DashboardSummary {
 
 export interface CampaignProgress {
   status: CampaignStatus;
+  pauseReason?: string | null;
   totalRecipients: number;
   sentCount: number;
   failedCount: number;
