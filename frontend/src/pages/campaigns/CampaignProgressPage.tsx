@@ -229,9 +229,10 @@ export default function CampaignProgressPage() {
             <p className="font-medium">Envoi mis en pause automatiquement</p>
             <p className="mt-1">{progress.pauseReason}</p>
             <p className="mt-1 text-amber-700/80 dark:text-amber-200/70">
-              Corrigez le compte SMTP, puis cliquez sur « Reprendre ».
+              Corrigez le problème, puis cliquez sur « Reprendre ».
             </p>
           </div>
+          {progress.pauseReason.includes("SMTP") && (
           <Link
             to="/smtp"
             className="btn h-9 shrink-0 border border-amber-300 bg-white px-3 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-500/10"
@@ -239,6 +240,7 @@ export default function CampaignProgressPage() {
             <Icon name="server" className="h-4 w-4" />
             Comptes SMTP
           </Link>
+          )}
         </div>
       )}
 

@@ -13,6 +13,12 @@ import { TEMPLATE_IMAGES_DIR } from "./middleware/upload.middleware";
 
 export const app: Express = express();
 
+// Requests reach us through Nginx Proxy Manager and the frontend's Nginx,
+// both on private/Docker networks. Trusting only private-range hops gives
+// the real client IP (rate limiting, tracking) while a client hitting port
+// 4000 directly from the internet still can't spoof X-Forwarded-For.
+app.set("trust proxy", "loopback, linklocal, uniquelocal");
+
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "2mb" }));
