@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { emitCampaignProgress } from "../lib/socket";
 import { env } from "../config/env";
 import * as campaignService from "./campaign.service";
+import { isValidClickSignature } from "./mergeEngine.service";
 
 export interface TrackingMeta {
   userAgent?: string;
@@ -95,19 +96,26 @@ function toSafeRedirectUrl(candidateUrl: string): string {
  * controller should redirect to.
  *
  * Public/unauthenticated-safe, same lookup-or-noop pattern as `recordOpen`.
- * Choice: if the token is invalid/expired, we still must return SOME
- * redirect target (the controller can't just fail a click a real user is
- * waiting on) — we fall back to the validated `targetUrl` itself if it's
- * safe (http/https), so a stale/expired tracking link still takes the user
- * where they expected to go; only if `targetUrl` itself is unsafe/missing
- * do we fall back further to `env.PUBLIC_BASE_URL`.
+ * The redirect target is only trusted when the link's signature matches
+ * (see `signClickUrl`), so the endpoint can't serve as an open redirect.
+ * Unsigned links are accepted only for a known token: emails sent before
+ * signing existed. Anything else lands on `env.PUBLIC_BASE_URL`.
  */
-export async function recordClick(trackingToken: string, targetUrl: string, meta: TrackingMeta): Promise<string> {
+export async function recordClick(
+  trackingToken: string,
+  targetUrl: string,
+  signature: string | undefined,
+  meta: TrackingMeta
+): Promise<string> {
+  if (signature !== undefined && !isValidClickSignature(trackingToken, targetUrl, signature, env.JWT_SECRET)) {
+    return env.PUBLIC_BASE_URL;
+  }
+
   const safeUrl = toSafeRedirectUrl(targetUrl);
 
   const recipient = await prisma.campaignRecipient.findUnique({ where: { trackingToken } });
   if (!recipient) {
-    return safeUrl;
+    return env.PUBLIC_BASE_URL;
   }
 
   await prisma.trackingEvent.create({

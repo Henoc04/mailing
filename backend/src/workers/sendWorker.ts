@@ -66,6 +66,7 @@
  * single tick's exception can stop future ticks from firing.
  */
 
+import { access } from "fs/promises";
 import type { Campaign, CampaignRecipient } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
@@ -231,6 +232,33 @@ async function loadCampaignSendContext(campaignId: string): Promise<CampaignSend
       attachments: { select: { fileName: true, storedPath: true } },
     },
   });
+}
+
+/**
+ * Pauses a campaign that can't send anything until someone fixes it (unusable
+ * SMTP account, missing attachment file), putting the claimed recipient back
+ * in the queue without counting an attempt. Retrying each recipient would
+ * only fail the same way.
+ */
+async function pauseUnsendableCampaign(recipientId: string, campaign: Campaign, reason: string): Promise<void> {
+  await releaseRecipient(recipientId);
+  await campaignService.markStatus(campaign.id, "PAUSED", { pauseReason: reason });
+  logger.warn({ campaignId: campaign.id, reason }, "sendWorker: campaign paused automatically");
+  await emitProgressSnapshot(campaign.id, campaign);
+}
+
+/** Returns the first attachment whose file is missing on disk, if any. */
+async function findMissingAttachment(
+  attachments: Array<{ filename: string; path: string }>
+): Promise<{ filename: string } | null> {
+  for (const attachment of attachments) {
+    try {
+      await access(attachment.path);
+    } catch {
+      return attachment;
+    }
+  }
+  return null;
 }
 
 /** Fetches the latest campaign counters and emits a progress snapshot over Socket.IO. */
@@ -402,6 +430,7 @@ async function processRecipientSend(
       bodyHtml: renderedBodyHtml,
       trackingToken: dueRecipient.trackingToken,
       publicBaseUrl: env.PUBLIC_BASE_URL,
+      clickSigningSecret: env.JWT_SECRET,
     }),
     unsubscribeUrl
   );
@@ -418,6 +447,16 @@ async function processRecipientSend(
     filename: a.fileName,
     path: a.storedPath,
   }));
+
+  const missingAttachment = await findMissingAttachment(attachments);
+  if (missingAttachment) {
+    await pauseUnsendableCampaign(
+      dueRecipient.id,
+      campaign,
+      `Pièce jointe introuvable sur le serveur : « ${missingAttachment.filename} ». Retirez-la puis ajoutez-la de nouveau dans le modèle ou la campagne.`
+    );
+    return;
+  }
 
   const start = Date.now();
   try {
@@ -445,15 +484,7 @@ async function processRecipientSend(
     );
   } catch (err) {
     if (err instanceof SmtpAccountUnusableError) {
-      // Every recipient would fail the same way: pause the whole campaign
-      // with the reason instead of exhausting each recipient's retries.
-      await releaseRecipient(dueRecipient.id);
-      await campaignService.markStatus(campaign.id, "PAUSED", { pauseReason: err.message });
-      logger.warn(
-        { campaignId: campaign.id, smtpAccountId, err: err.message },
-        "sendWorker: SMTP account unusable, campaign paused"
-      );
-      await emitProgressSnapshot(campaign.id, campaign);
+      await pauseUnsendableCampaign(dueRecipient.id, campaign, err.message);
       return;
     }
 

@@ -58,7 +58,8 @@ export const clickRedirect = asyncHandler(async (req: Request, res: Response) =>
   try {
     const targetUrl = typeof rawUrl === "string" ? decodeURIComponent(rawUrl) : "";
 
-    const resolvedUrl = await trackingService.recordClick(token, targetUrl, {
+    const signature = typeof req.query.s === "string" ? req.query.s : undefined;
+    const resolvedUrl = await trackingService.recordClick(token, targetUrl, signature, {
       userAgent: req.get("user-agent") ?? undefined,
       ipAddress: req.ip,
     });

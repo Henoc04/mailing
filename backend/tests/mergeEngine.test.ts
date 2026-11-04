@@ -4,6 +4,7 @@ import {
   buildUnsubscribeUrl,
   htmlToText,
   injectTracking,
+  isValidClickSignature,
   preserveLineBreaksForEmail,
   renderCampaignContent,
   renderTemplate,
@@ -59,21 +60,45 @@ describe("renderCampaignContent", () => {
 
 describe("injectTracking", () => {
   const base = "https://crm.example.test";
+  const secret = "test-secret";
 
   it("adds the open-tracking pixel", () => {
-    const out = injectTracking({ bodyHtml: "<p>Hi</p>", trackingToken: "TOK", publicBaseUrl: base });
+    const out = injectTracking({ bodyHtml: "<p>Hi</p>", trackingToken: "TOK", publicBaseUrl: base, clickSigningSecret: secret });
     expect(out).toContain(`<img src="${base}/api/t/o/TOK.png"`);
   });
 
-  it("leaves links untouched while click tracking is suspended", () => {
-    const html = '<p><a href="https://site.test/offre">Offre</a></p>';
-    const out = injectTracking({ bodyHtml: html, trackingToken: "TOK", publicBaseUrl: base });
-    expect(out).toContain('href="https://site.test/offre"');
-    expect(out).not.toContain("/t/c/");
+  function trackedUrl(out: string): URL {
+    return new URL((/href="([^"]+)"/.exec(out)?.[1] ?? "").replace(/&amp;/g, "&"));
+  }
+
+  it("routes links through a signed click redirect", () => {
+    const html = '<p><a href="https://site.test/offre?a=1&amp;b=2">Offre</a></p>';
+    const out = injectTracking({ bodyHtml: html, trackingToken: "TOK", publicBaseUrl: base, clickSigningSecret: secret });
+    const url = trackedUrl(out);
+    expect(url.origin + url.pathname).toBe(`${base}/api/t/c/TOK`);
+    expect(url.searchParams.get("u")).toBe("https://site.test/offre?a=1&b=2");
+    expect(isValidClickSignature("TOK", url.searchParams.get("u")!, url.searchParams.get("s")!, secret)).toBe(true);
+  });
+
+  it("rejects a signature reused for another URL or token", () => {
+    const out = injectTracking({
+      bodyHtml: '<a href="https://site.test/offre">Offre</a>',
+      trackingToken: "TOK",
+      publicBaseUrl: base,
+      clickSigningSecret: secret,
+    });
+    const sig = trackedUrl(out).searchParams.get("s")!;
+    expect(isValidClickSignature("TOK", "https://evil.test", sig, secret)).toBe(false);
+    expect(isValidClickSignature("OTHER", "https://site.test/offre", sig, secret)).toBe(false);
   });
 
   it("inserts the pixel before </body> when present", () => {
-    const out = injectTracking({ bodyHtml: "<html><body><p>x</p></body></html>", trackingToken: "T", publicBaseUrl: base });
+    const out = injectTracking({
+      bodyHtml: "<html><body><p>x</p></body></html>",
+      trackingToken: "T",
+      publicBaseUrl: base,
+      clickSigningSecret: secret,
+    });
     expect(out.indexOf("/api/t/o/T.png")).toBeLessThan(out.indexOf("</body>"));
   });
 });

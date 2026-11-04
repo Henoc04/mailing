@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "crypto";
 import type { Contact } from "@prisma/client";
 import { sanitizeTemplateHtml } from "../lib/sanitizeHtml";
 
@@ -199,6 +200,23 @@ export interface InjectTrackingParams {
   bodyHtml: string;
   trackingToken: string;
   publicBaseUrl: string;
+  /** Secret used to sign click-redirect links (see `signClickUrl`). */
+  clickSigningSecret: string;
+}
+
+/**
+ * Signature binding a click-redirect link to its tracking token and target
+ * URL. Without it the public /t/c endpoint would redirect anywhere, letting
+ * anyone use our domain to disguise phishing links.
+ */
+export function signClickUrl(trackingToken: string, url: string, secret: string): string {
+  return createHmac("sha256", `click:${secret}`).update(`${trackingToken}\n${url}`).digest("base64url").slice(0, 22);
+}
+
+export function isValidClickSignature(trackingToken: string, url: string, signature: string, secret: string): boolean {
+  const expected = Buffer.from(signClickUrl(trackingToken, url, secret));
+  const given = Buffer.from(signature);
+  return expected.length === given.length && timingSafeEqual(expected, given);
 }
 
 // Matches an opening `<a ...href="http(s)://...">` tag, capturing:
@@ -215,10 +233,9 @@ export interface InjectTrackingParams {
 // already passed through `sanitizeTemplateHtml`, that's an acceptable risk.
 const ANCHOR_HREF_PATTERN = /<a\s+([^>]*?)href=(["'])(https?:\/\/[^"']+)\2([^>]*)>/gi;
 
-// Click tracking is suspended: links are sent untouched so recipients reach
-// the real destination directly. The /t/c redirect route stays mounted so
-// links in emails already sent keep working once the proxy forwards /t/.
-const CLICK_TRACKING_ENABLED = false;
+// Links are rewritten through the signed /api/t/c redirect to count clicks.
+// Mirrored by CLICK_TRACKING_ENABLED in frontend/src/config/features.ts.
+const CLICK_TRACKING_ENABLED = true;
 
 /**
  * Appends an invisible open-tracking pixel to the HTML body and, when click
@@ -226,13 +243,17 @@ const CLICK_TRACKING_ENABLED = false;
  * route through the click-tracking redirect endpoint.
  */
 export function injectTracking(params: InjectTrackingParams): string {
-  const { bodyHtml, trackingToken, publicBaseUrl } = params;
+  const { bodyHtml, trackingToken, publicBaseUrl, clickSigningSecret } = params;
 
   const withTrackedLinks = CLICK_TRACKING_ENABLED
     ? bodyHtml.replace(
         ANCHOR_HREF_PATTERN,
         (_match, beforeAttrs: string, quote: string, originalHref: string, afterAttrs: string) => {
-          const trackedHref = `${publicBaseUrl}/api/t/c/${trackingToken}?u=${encodeURIComponent(originalHref)}`;
+          // The editor stores "&" as "&amp;" inside href; sign and redirect to
+          // the URL the recipient would actually have reached.
+          const targetUrl = originalHref.replace(/&amp;/g, "&");
+          const signature = signClickUrl(trackingToken, targetUrl, clickSigningSecret);
+          const trackedHref = `${publicBaseUrl}/api/t/c/${trackingToken}?u=${encodeURIComponent(targetUrl)}&amp;s=${signature}`;
           return `<a ${beforeAttrs}href=${quote}${trackedHref}${quote}${afterAttrs}>`;
         }
       )
